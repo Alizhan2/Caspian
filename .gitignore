@@ -32,6 +32,7 @@ backend/data/*
 *.onnx
 training/data/*
 !training/data/manifest.example.jsonl
+training/label-packs/*
 
 # Local logs and editor files
 *.log

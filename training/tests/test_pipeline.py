@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from training.datasets import (
     SarPatchDataset,
@@ -12,6 +13,7 @@ from training.datasets import (
 )
 from training.export import export_candidate_metadata
 from training.promote import promote
+from training.rasterize_labels import build_manifest, rasterize_record
 
 
 def create_manifest(root: Path, scenes: int = 6) -> Path:
@@ -95,3 +97,70 @@ def test_candidate_requires_explicit_promotion(tmp_path: Path):
         approval_note="Independent test review",
     )
     assert promote(payload, checkpoint, args)["validation_status"] == "validated"
+
+
+def label_record(
+    root: Path, status: str, features: list, reviewed_by: str | None = "reviewer"
+) -> dict:
+    from rasterio.transform import from_bounds
+
+    (root / "annotations").mkdir(parents=True, exist_ok=True)
+    (root / "images").mkdir(parents=True, exist_ok=True)
+    (root / "masks").mkdir(parents=True, exist_ok=True)
+    np.save(root / "images" / "sample.npy", np.zeros((2, 10, 10), dtype="float32"))
+    annotation = {
+        "type": "FeatureCollection",
+        "features": features,
+        "properties": {"review_status": status, "reviewed_by": reviewed_by},
+    }
+    (root / "annotations" / "sample.geojson").write_text(
+        json.dumps(annotation), encoding="utf-8"
+    )
+    return {
+        "sample_id": "sample",
+        "image": "images/sample.npy",
+        "annotation": "annotations/sample.geojson",
+        "scene_id": "scene-1",
+        "acquisition_time": "2026-08-02T14:21:15Z",
+        "region": "aktau",
+        "bbox": [51, 42, 52, 43],
+        "shape": [10, 10],
+        "transform": list(from_bounds(51, 42, 52, 43, 10, 10))[:6],
+    }
+
+
+def test_unreviewed_annotation_cannot_become_training_mask(tmp_path: Path):
+    record = label_record(tmp_path, "unreviewed", [], reviewed_by=None)
+    with pytest.raises(ValueError, match="has not been reviewed"):
+        rasterize_record(tmp_path, record)
+
+
+def test_reviewed_polygon_is_rasterized_and_manifested(tmp_path: Path):
+    polygon = {
+        "type": "Feature",
+        "properties": {},
+        "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+                [[51.2, 42.2], [51.8, 42.2], [51.8, 42.8], [51.2, 42.8], [51.2, 42.2]]
+            ],
+        },
+    }
+    pack_root = tmp_path / "pack"
+    record = label_record(pack_root, "reviewed_positive", [polygon])
+    mask, reviewer = rasterize_record(pack_root, record)
+    assert mask.sum() > 0
+    assert reviewer == "reviewer"
+    pack = pack_root / "pack.jsonl"
+    pack.write_text(json.dumps(record) + "\n", encoding="utf-8")
+    manifest = build_manifest(pack, tmp_path / "dataset" / "manifest.jsonl")
+    loaded = load_manifest(manifest)
+    image, saved_mask, _ = SarPatchDataset(manifest, loaded)[0]
+    assert tuple(image.shape) == (2, 10, 10)
+    assert float(saved_mask.sum()) > 0
+
+
+def test_reviewed_negative_produces_an_empty_mask(tmp_path: Path):
+    record = label_record(tmp_path, "reviewed_negative", [])
+    mask, _ = rasterize_record(tmp_path, record)
+    assert mask.sum() == 0

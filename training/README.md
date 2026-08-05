@@ -11,6 +11,28 @@ Training data is a JSON Lines manifest. Every row points to a normalized two-cha
 - all patches from one `scene_id` stay in one split to prevent spatial leakage.
 - the model card records split scenes, regions and acquisition dates.
 
+## Build a real annotation pack
+
+With the local API running, collect the latest real patches for Aktau, Kashagan and Atyrau:
+
+```powershell
+$env:PYTHONPATH = "backend"
+python -m training.prepare_label_pack
+```
+
+The ignored `training/label-packs/caspian-v1` directory contains two-channel arrays, georeferenced rasters, RGB previews and one GeoJSON annotation template per scene. Open the rasters/templates in QGIS or another geospatial annotation tool.
+
+An annotation is never interpreted as a negative sample merely because it is empty. A reviewer must set:
+
+- `review_status: reviewed_positive`, add at least one polygon and fill `reviewed_by`; or
+- `review_status: reviewed_negative`, leave `features` empty and fill `reviewed_by`.
+
+After every sample has been reviewed, build masks and the training manifest:
+
+```powershell
+python -m training.rasterize_labels
+```
+
 Train a candidate from the repository root:
 
 ```powershell
