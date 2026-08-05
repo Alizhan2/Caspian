@@ -13,14 +13,16 @@ Training data is a JSON Lines manifest. Every row points to a normalized two-cha
 
 ## Build a real annotation pack
 
-With the local API running, collect the latest real patches for Aktau, Kashagan and Atyrau:
+Collect multi-date real patches for Aktau, Kashagan and Atyrau:
 
 ```powershell
 $env:PYTHONPATH = "backend"
-python -m training.prepare_label_pack
+python -m training.prepare_label_pack --days-back 180 --scenes-per-area 4
 ```
 
-The ignored `training/label-packs/caspian-v1` directory contains two-channel arrays, georeferenced rasters, RGB previews and one GeoJSON annotation template per scene. Open the rasters/templates in QGIS or another geospatial annotation tool.
+The collector queries the public Earth Search STAC catalogue, keeps one compatible Sentinel-1 IW VV/VH scene per acquisition date and merges new records into the existing pack without overwriting reviewed GeoJSON. Each record also stores the nearest hourly 10 m wind speed, direction and gust from the Open-Meteo Historical Weather API. Missing weather is explicitly stored as `unavailable` rather than estimated.
+
+The ignored `training/label-packs/caspian-v1` directory contains two-channel arrays, georeferenced rasters, RGB previews and one GeoJSON annotation template per scene. Open the rasters/templates in the built-in bilingual labeling center, QGIS or another geospatial annotation tool.
 
 An annotation is never interpreted as a negative sample merely because it is empty. A reviewer must set:
 

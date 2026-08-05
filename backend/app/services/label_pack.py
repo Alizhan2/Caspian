@@ -107,5 +107,6 @@ class LabelPack:
             "reviewed_at": properties.get("reviewed_at"),
             "polygon_count": len(annotation.get("features", [])),
             "polygons": polygons,
+            "weather_context": record.get("weather_context"),
             "preview_url": f"/api/labeling/samples/{sample_id}/preview",
         }

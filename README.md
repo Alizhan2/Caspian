@@ -130,7 +130,7 @@ These are not silently simulated by the current build.
 
 ## Verification performed in this workspace
 
-- Backend, annotation and training pipeline: 23 tests passed, including reviewer-name validation.
+- Backend, annotation and training pipeline: 25 tests passed, including reviewer-name, multi-date selection and wind-context validation.
 - SQLAlchemy mapper configuration: passed.
 - Frontend TypeScript and Vite production build: passed.
 - Docker Compose infrastructure: PostGIS, Redis and MinIO healthy.
@@ -138,7 +138,7 @@ These are not silently simulated by the current build.
 - Live imagery crop: VV/VH source ranges were read into a georeferenced 512 x 512, two-band GeoTIFF without downloading the complete source products.
 - End-to-end live screening: Celery processed a real Sentinel-1 crop through the experimental adaptive SAR baseline, stored seven candidate polygons in PostGIS and uploaded the raster, preview and mask to MinIO.
 - Training smoke test: one complete U-Net epoch produced a candidate state dict, validation/test metrics, selected threshold and non-promoted model card.
-- Real annotation pack: three 512 x 512 VV/VH patches, GeoTIFFs, previews and `unreviewed` GeoJSON templates were generated for Aktau, Kashagan and Atyrau; no synthetic labels were created.
+- Real annotation pack: six 512 x 512 VV/VH patches across two acquisition dates per region, GeoTIFFs, previews, historical 10 m wind context and `unreviewed` GeoJSON templates were generated for Aktau, Kashagan and Atyrau; no synthetic labels were created.
 - Real model inference: not executed because no validated checkpoint is present.
 
 Official integration references: [Earth Search examples](https://element84.com/earth-search/examples/), [Copernicus Sentinel Hub authentication](https://documentation.dataspace.copernicus.eu/APIs/SentinelHub/Overview/Authentication.html), [Sentinel-1 GRD Process API](https://documentation.dataspace.copernicus.eu/APIs/SentinelHub/Data/S1GRD.html), and [SkyTruth Cerulean Cloud](https://github.com/SkyTruth/cerulean-cloud) as an architectural reference for human-reviewed oil-slick monitoring.

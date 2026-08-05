@@ -176,6 +176,7 @@ class LabelSampleResponse(BaseModel):
     reviewed_at: datetime | None = None
     polygon_count: int
     polygons: list[list[list[float]]]
+    weather_context: dict[str, Any] | None = None
     preview_url: str
 
 

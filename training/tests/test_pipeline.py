@@ -13,7 +13,9 @@ from training.datasets import (
 )
 from training.export import export_candidate_metadata
 from training.promote import promote
+from training.prepare_label_pack import compatible_items
 from training.rasterize_labels import build_manifest, rasterize_record
+from training.weather import nearest_wind
 
 
 def create_manifest(root: Path, scenes: int = 6) -> Path:
@@ -164,3 +166,52 @@ def test_reviewed_negative_produces_an_empty_mask(tmp_path: Path):
     record = label_record(tmp_path, "reviewed_negative", [])
     mask, _ = rasterize_record(tmp_path, record)
     assert mask.sum() == 0
+
+
+def test_label_pack_scene_selection_uses_distinct_dates_and_dual_pol():
+    def item(identifier: str, acquired: str, polarizations: list[str]) -> dict:
+        return {
+            "id": identifier,
+            "properties": {
+                "datetime": acquired,
+                "sar:instrument_mode": "IW",
+                "sar:polarizations": polarizations,
+            },
+            "assets": {
+                "vv": {"href": "s3://sentinel-s1-l1c/path/vv.tif"},
+                "vh": {"href": "s3://sentinel-s1-l1c/path/vh.tif"},
+            },
+        }
+
+    selected = compatible_items(
+        [
+            item("newest", "2026-08-04T10:00:00Z", ["VV", "VH"]),
+            item("same-day", "2026-08-04T08:00:00Z", ["VV", "VH"]),
+            item("single-pol", "2026-08-03T10:00:00Z", ["VV"]),
+            item("older", "2026-08-02T10:00:00Z", ["VV", "VH"]),
+        ],
+        limit=3,
+    )
+    assert [item["id"] for item in selected] == ["newest", "older"]
+    assert selected[0]["assets"]["vv"]["href"].startswith("https://")
+
+
+def test_nearest_wind_matches_acquisition_hour():
+    from datetime import datetime, timezone
+
+    context = nearest_wind(
+        {
+            "latitude": 43.4,
+            "longitude": 51.2,
+            "hourly": {
+                "time": ["2026-08-02T13:00", "2026-08-02T14:00", "2026-08-02T15:00"],
+                "wind_speed_10m": [2.0, 3.5, 5.0],
+                "wind_direction_10m": [100, 120, 140],
+                "wind_gusts_10m": [4.0, 6.0, 8.0],
+            },
+        },
+        datetime(2026, 8, 2, 14, 22, tzinfo=timezone.utc),
+    )
+    assert context["wind_speed_10m_ms"] == 3.5
+    assert context["wind_direction_10m_deg"] == 120
+    assert context["timestamp"].startswith("2026-08-02T14:00")
