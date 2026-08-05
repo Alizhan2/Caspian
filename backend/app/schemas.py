@@ -177,6 +177,7 @@ class LabelSampleResponse(BaseModel):
     polygon_count: int
     polygons: list[list[list[float]]]
     weather_context: dict[str, Any] | None = None
+    temporal_context: dict[str, Any] | None = None
     preview_url: str
 
 

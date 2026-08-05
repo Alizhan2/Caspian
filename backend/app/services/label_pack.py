@@ -108,5 +108,6 @@ class LabelPack:
             "polygon_count": len(annotation.get("features", [])),
             "polygons": polygons,
             "weather_context": record.get("weather_context"),
+            "temporal_context": record.get("temporal_context"),
             "preview_url": f"/api/labeling/samples/{sample_id}/preview",
         }

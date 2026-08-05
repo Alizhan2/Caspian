@@ -266,6 +266,11 @@ button.record-row:hover { background: rgba(159,181,141,.06); }
 .weather-context strong { margin-right: auto; color: #d8e2d2; font-size: 10px; }
 .weather-context b { color: #f0d28f; font-family: 'DM Mono', monospace; }
 .weather-context.unavailable { border-color: #5a513d; color: #a99b7c; background: #302b20; }
+.temporal-context { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 18px; margin-top: 9px; padding: 11px 13px; border: 1px solid #4e4b62; border-radius: 9px; color: #b9b5cd; background: #292735; font-size: 9px; }
+.temporal-context strong { margin-right: auto; color: #ddd9ec; font-size: 10px; }
+.temporal-context b { color: #d8bbf3; font-family: 'DM Mono', monospace; }
+.temporal-context small { width: 100%; color: #9290a4; font-size: 8px; }
+.temporal-context.unavailable { border-color: #4a4a50; color: #97979d; background: #29292c; }
 .label-review-form { display: grid; grid-template-columns: 1fr 1.4fr; gap: 13px; margin-top: 14px; padding: 16px; }
 .label-review-form label { color: #b6b8af; font-size: 10px; }
 .label-review-form input, .label-review-form textarea { width: 100%; margin-top: 7px; padding: 11px; border: 1px solid #4d5044; border-radius: 8px; color: var(--text); background: #20221c; font: 10px 'Manrope', sans-serif; }

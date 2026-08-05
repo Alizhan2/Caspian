@@ -17,6 +17,7 @@ from app.services.copernicus_auth import CopernicusAuth
 from app.services.scene_processor import normalize_vv_vh
 from app.services.sentinel_catalog import SceneCatalog
 from app.services.sentinel_process import SentinelProcess
+from training.temporal import refresh_temporal_context
 from training.weather import historical_wind
 
 EARTH_SEARCH_URL = "https://earth-search.aws.element84.com/v1"
@@ -267,6 +268,7 @@ async def run(args: argparse.Namespace) -> None:
     records.sort(
         key=lambda item: (item["region"], item["acquisition_time"]), reverse=True
     )
+    refresh_temporal_context(records, output)
     index.write_text(
         "\n".join(json.dumps(record, ensure_ascii=False) for record in records) + "\n",
         encoding="utf-8",

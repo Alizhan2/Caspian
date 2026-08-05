@@ -15,6 +15,7 @@ from training.export import export_candidate_metadata
 from training.promote import promote
 from training.prepare_label_pack import compatible_items
 from training.rasterize_labels import build_manifest, rasterize_record
+from training.temporal import refresh_temporal_context
 from training.weather import nearest_wind
 
 
@@ -215,3 +216,34 @@ def test_nearest_wind_matches_acquisition_hour():
     assert context["wind_speed_10m_ms"] == 3.5
     assert context["wind_direction_10m_deg"] == 120
     assert context["timestamp"].startswith("2026-08-02T14:00")
+
+
+def test_temporal_context_compares_adjacent_scenes_only(tmp_path: Path):
+    images = tmp_path / "images"
+    images.mkdir()
+    previous = np.full((2, 8, 8), 0.3, dtype="float32")
+    current = previous.copy()
+    current[:, 2:6, 2:6] = 0.8
+    np.save(images / "previous.npy", previous)
+    np.save(images / "current.npy", current)
+    records = [
+        {
+            "sample_id": "previous",
+            "region": "aktau",
+            "image": "images/previous.npy",
+            "acquisition_time": "2026-07-01T00:00:00Z",
+        },
+        {
+            "sample_id": "current",
+            "region": "aktau",
+            "image": "images/current.npy",
+            "acquisition_time": "2026-07-05T00:00:00Z",
+        },
+    ]
+    refresh_temporal_context(records, tmp_path)
+    assert records[0]["temporal_context"]["status"] == "unavailable"
+    context = records[1]["temporal_context"]
+    assert context["status"] == "available"
+    assert context["previous_sample_id"] == "previous"
+    assert context["days_between"] == 4.0
+    assert context["changed_pixel_fraction"] > 0

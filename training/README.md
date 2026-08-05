@@ -20,7 +20,7 @@ $env:PYTHONPATH = "backend"
 python -m training.prepare_label_pack --days-back 180 --scenes-per-area 4
 ```
 
-The collector queries the public Earth Search STAC catalogue, keeps one compatible Sentinel-1 IW VV/VH scene per acquisition date and merges new records into the existing pack without overwriting reviewed GeoJSON. Each record also stores the nearest hourly 10 m wind speed, direction and gust from the Open-Meteo Historical Weather API. Missing weather is explicitly stored as `unavailable` rather than estimated.
+The collector queries the public Earth Search STAC catalogue, keeps one compatible Sentinel-1 IW VV/VH scene per acquisition date and merges new records into the existing pack without overwriting reviewed GeoJSON. Each record also stores the nearest hourly 10 m wind speed, direction and gust from the Open-Meteo Historical Weather API. Missing weather is explicitly stored as `unavailable` rather than estimated. For every scene after the first in a region, it also stores a contrast-normalized VV/VH difference against the previous date; this is an operator screening aid, not radiometrically calibrated change detection or proof of a spill.
 
 The ignored `training/label-packs/caspian-v1` directory contains two-channel arrays, georeferenced rasters, RGB previews and one GeoJSON annotation template per scene. Open the rasters/templates in the built-in bilingual labeling center, QGIS or another geospatial annotation tool.
 
