@@ -26,6 +26,7 @@ class RealOilAnalysis:
             bbox,
             ((acquisition - timedelta(days=1)).isoformat(), (acquisition + timedelta(days=1)).isoformat()),
             scene["external_scene_id"],
+            scene.get("source_metadata"),
         )
         import rasterio
 

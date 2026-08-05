@@ -5,6 +5,8 @@ export interface Health {
   analysis_mode: string;
   data_mode: "live";
   credentials_configured: boolean;
+  satellite_connected: boolean;
+  satellite_provider: string;
   model_configured: boolean;
   live_ready: boolean;
   components: Record<string, boolean>;

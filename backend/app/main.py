@@ -44,7 +44,7 @@ configure_logging(settings.log_level)
 logger = logging.getLogger(__name__)
 repo = PostgresRepository(settings.database_url)
 auth = CopernicusAuth(settings.cdse_client_id, settings.cdse_client_secret, settings.cdse_token_url)
-catalog = SceneCatalog(auth, settings.cdse_base_url)
+catalog = SceneCatalog(auth, settings.cdse_base_url, settings.earth_search_url)
 process = SentinelProcess(auth, settings.cdse_base_url, settings.storage_path)
 inference = OilUnetInference(settings.model_path, settings.model_threshold)
 real_analysis = RealOilAnalysis(process, inference)
@@ -91,13 +91,18 @@ def _redis_ready() -> bool:
 
 def readiness() -> dict:
     components = {
-        "copernicus": auth.configured,
+        "satellite_catalog": catalog.ready,
         "segmentation_model": inference.ready,
         "postgis": repo.ping(),
         "redis": _redis_ready(),
         "object_storage": storage.ready(),
     }
-    return {"live_ready": all(components.values()), "components": components}
+    satellite_ready = components["satellite_catalog"] and components["postgis"]
+    return {
+        "live_ready": all(components.values()),
+        "satellite_ready": satellite_ready,
+        "components": components,
+    }
 
 
 def require_live() -> None:
@@ -107,15 +112,31 @@ def require_live() -> None:
         raise HTTPException(status_code=503, detail={"message": "Live pipeline is not configured", "missing": missing})
 
 
+def require_satellite() -> None:
+    state = readiness()
+    if not state["satellite_ready"]:
+        missing = [name for name in ("satellite_catalog", "postgis") if not state["components"][name]]
+        raise HTTPException(
+            status_code=503,
+            detail={"message": "Satellite catalog is unavailable", "missing": missing},
+        )
+
+
 @app.get("/api/health")
 async def health() -> dict:
     state = readiness()
     return {
-        "status": "ok" if state["live_ready"] else "configuration_required",
+        "status": "ok"
+        if state["live_ready"]
+        else "satellite_ready"
+        if state["satellite_ready"]
+        else "configuration_required",
         "service": "caspian-guardian-api",
         "analysis_mode": settings.analysis_mode,
         "data_mode": "live",
         "credentials_configured": auth.configured,
+        "satellite_connected": state["satellite_ready"],
+        "satellite_provider": catalog.provider,
         "model_configured": inference.ready,
         **state,
         "ollama_enabled": settings.ollama_enabled,
@@ -137,7 +158,7 @@ async def list_areas():
 
 
 async def search_scene(payload: SceneSearchRequest) -> dict:
-    require_live()
+    require_satellite()
     box = BoundingBox.from_list(payload.bbox)
     if (box.east - box.west) * (box.north - box.south) > settings.max_bbox_area_degrees:
         raise ValueError("requested area is too large for one analysis")
@@ -160,7 +181,7 @@ async def scenes_search(payload: SceneSearchRequest):
 
 @app.get("/api/scenes/latest", response_model=SceneResponse)
 async def latest_scene():
-    require_live()
+    require_satellite()
     scene = repo.latest_scene()
     if not scene:
         raise HTTPException(status_code=404, detail="No live scene has been discovered yet")
@@ -242,6 +263,7 @@ def enqueue(job_id: UUID) -> None:
 
 @app.post("/api/analysis", response_model=AnalysisQueued)
 async def start_analysis(payload: AnalysisRequest):
+    require_live()
     scene = await search_scene(payload)
     job = repo.add_job(scene["id"], payload.analysis_mode.value, payload.bbox, payload.resolution)
     if job["created"]:
@@ -354,6 +376,9 @@ async def download_report(detection_id: UUID):
 
 
 async def monitor_due_areas() -> int:
+    if not readiness()["live_ready"]:
+        logger.info("Skipping scheduled analysis until the full live pipeline is ready")
+        return 0
     processed = 0
     for subscription in repo.due_subscriptions():
         scene = repo.add_scene(await catalog.latest(subscription["bbox"], settings.max_days_back))

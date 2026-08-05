@@ -6,9 +6,9 @@ Live-only platform for Sentinel-1 SAR screening of potential oil-like anomalies 
 
 ## What is implemented
 
-- Copernicus Data Space OAuth2 client-credentials authentication with token reuse.
-- Sentinel Hub Catalog search for the newest Sentinel-1 GRD IW scene with VV/VH polarization.
-- Process API download of orthorectified two-band GeoTIFF imagery.
+- Public Earth Search STAC discovery for the newest Sentinel-1 GRD IW scene with VV/VH polarization; no API key is required.
+- Range-based VV/VH crop from public Sentinel-1 Cloud Optimized GeoTIFFs, so the full source products are not downloaded.
+- Optional Copernicus Data Space OAuth2 and Process API fallback with token reuse.
 - Local open-source U-Net/ResNet34 inference through `segmentation-models-pytorch`; no proprietary inference API.
 - Fail-closed model loading with checkpoint SHA-256 included in every model version.
 - Configurable confidence and min/max area filters.
@@ -29,16 +29,16 @@ React/Leaflet
       │                 │
     Redis ─ Celery ─ Celery Beat
       │         │
-Copernicus   U-Net/ResNet34
- Catalog + Process API
+Earth Search / Copernicus   U-Net/ResNet34
+   STAC + COG / Process API
       │
     MinIO ─── optional Ollama explanation
 ```
 
 ## Required production inputs
 
-1. Create an OAuth client in the Copernicus Data Space Sentinel Hub dashboard.
-2. Put `CDSE_CLIENT_ID` and `CDSE_CLIENT_SECRET` in a local `.env` copied from `.env.example`.
+1. Copy `.env.example` to `.env`. The default Earth Search catalog is public and needs no API key.
+2. Optionally add `CDSE_CLIENT_ID` and `CDSE_CLIENT_SECRET` for the Copernicus Process API fallback.
 3. Place a validated two-channel U-Net checkpoint at `models/oil_unet.pt`.
 4. Change all example database and MinIO passwords before internet deployment.
 5. Install Docker Desktop, then start the stack.
@@ -80,13 +80,13 @@ The model pull is intentionally not automatic because it is large. `OLLAMA_MODEL
 
 `GET /api/health` returns the state of:
 
-- `copernicus`
+- `satellite_catalog`
 - `segmentation_model`
 - `postgis`
 - `redis`
 - `object_storage`
 
-`live_ready` becomes true only when all five are ready. Search and analysis endpoints return `503` otherwise. There is no synthetic fallback.
+`satellite_ready` becomes true when the public catalog and infrastructure are available, allowing real scene search and previews. `live_ready` additionally requires the segmentation model before analysis can run. There is no synthetic fallback.
 
 ## AOI monitoring
 
@@ -127,11 +127,12 @@ These are not silently simulated by the current build.
 
 ## Verification performed in this workspace
 
-- Backend: 9 tests passed.
+- Backend: 10 tests passed.
 - SQLAlchemy mapper configuration: passed.
 - Frontend TypeScript and Vite production build: passed.
-- Docker Compose runtime: not executed because Docker is not installed in this Windows environment.
-- Live Copernicus acquisition: not executed because no user OAuth credentials are present.
+- Docker Compose infrastructure: PostGIS, Redis and MinIO healthy.
+- Live satellite discovery: Earth Search returned Sentinel-1D scene `S1D_IW_GRDH_1SDV_20260802T142102_20260802T142127_003948_00727D` acquired on 2026-08-02.
+- Live imagery crop: VV/VH source ranges were read into a georeferenced 512 x 512, two-band GeoTIFF without downloading the complete source products.
 - Real model inference: not executed because no validated checkpoint is present.
 
-Official integration references: [Copernicus Sentinel Hub authentication](https://documentation.dataspace.copernicus.eu/APIs/SentinelHub/Overview/Authentication.html), [Catalog API examples](https://documentation.dataspace.copernicus.eu/APIs/SentinelHub/Catalog/Examples.html), [Sentinel-1 GRD Process API](https://documentation.dataspace.copernicus.eu/APIs/SentinelHub/Data/S1GRD.html), and [SkyTruth Cerulean Cloud](https://github.com/SkyTruth/cerulean-cloud) as an architectural reference for human-reviewed oil-slick monitoring.
+Official integration references: [Earth Search examples](https://element84.com/earth-search/examples/), [Copernicus Sentinel Hub authentication](https://documentation.dataspace.copernicus.eu/APIs/SentinelHub/Overview/Authentication.html), [Sentinel-1 GRD Process API](https://documentation.dataspace.copernicus.eu/APIs/SentinelHub/Data/S1GRD.html), and [SkyTruth Cerulean Cloud](https://github.com/SkyTruth/cerulean-cloud) as an architectural reference for human-reviewed oil-slick monitoring.

@@ -46,6 +46,7 @@ services:
       REDIS_URL: redis://redis:6379/0
       CDSE_CLIENT_ID: ${CDSE_CLIENT_ID:-}
       CDSE_CLIENT_SECRET: ${CDSE_CLIENT_SECRET:-}
+      EARTH_SEARCH_URL: ${EARTH_SEARCH_URL:-https://earth-search.aws.element84.com/v1}
       MODEL_PATH: /workspace/models/oil_unet.pt
       MODEL_THRESHOLD: ${MODEL_THRESHOLD:-0.58}
       STORAGE_PATH: /workspace/data

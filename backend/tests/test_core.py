@@ -25,8 +25,9 @@ def test_health_is_live_only_and_fail_closed(monkeypatch):
         "readiness",
         lambda: {
             "live_ready": False,
+            "satellite_ready": False,
             "components": {
-                "copernicus": False,
+                "satellite_catalog": False,
                 "segmentation_model": False,
                 "postgis": False,
                 "redis": False,
@@ -43,9 +44,14 @@ def test_health_is_live_only_and_fail_closed(monkeypatch):
 @pytest.mark.asyncio
 async def test_catalog_never_falls_back_to_synthetic_data():
     auth = CopernicusAuth("", "", "https://example.invalid/token")
-    catalog = SceneCatalog(auth, "https://example.invalid")
-    with pytest.raises(RuntimeError, match="credentials"):
+    catalog = SceneCatalog(auth, "https://example.invalid", public_stac_url="")
+    with pytest.raises(RuntimeError, match="catalog"):
         await catalog.latest([51.85, 42.4, 52.4, 43.1], 14)
+
+
+def test_public_catalog_converts_s3_assets_to_anonymous_https():
+    href = SceneCatalog._public_asset_url("s3://sentinel-s1-l1c/path/to/VV.tif")
+    assert href == "https://sentinel-s1-l1c.s3.amazonaws.com/path/to/VV.tif"
 
 
 def test_inference_without_checkpoint_fails_closed(tmp_path: Path):

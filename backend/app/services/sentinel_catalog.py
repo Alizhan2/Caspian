@@ -1,7 +1,9 @@
 import logging
 import uuid
+from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 from typing import Any
+from urllib.parse import quote, urlparse
 
 import httpx
 
@@ -12,13 +14,31 @@ logger = logging.getLogger(__name__)
 
 
 class SceneCatalog:
-    def __init__(self, auth: CopernicusAuth, base_url: str) -> None:
+    def __init__(
+        self,
+        auth: CopernicusAuth,
+        base_url: str,
+        public_stac_url: str = "https://earth-search.aws.element84.com/v1",
+    ) -> None:
         self.auth = auth
         self.catalog_url = f"{base_url.rstrip('/')}/catalog/v1/search"
+        self.public_search_url = f"{public_stac_url.rstrip('/')}/search" if public_stac_url else ""
+        self.provider = "Earth Search" if self.public_search_url else "Copernicus Data Space"
+
+    @property
+    def ready(self) -> bool:
+        return bool(self.public_search_url or self.auth.configured)
+
+    @staticmethod
+    def _public_asset_url(href: str) -> str:
+        if not href.startswith("s3://"):
+            return href
+        parsed = urlparse(href)
+        return f"https://{parsed.netloc}.s3.amazonaws.com{quote(parsed.path, safe='/')}"
 
     async def latest(self, bbox: list[float], days_back: int) -> dict[str, Any]:
-        if not self.auth.configured:
-            raise RuntimeError("Copernicus OAuth credentials are not configured")
+        if not self.ready:
+            raise RuntimeError("A Sentinel-1 satellite catalog is not configured")
         box = BoundingBox.from_list(bbox)
         now = datetime.now(timezone.utc)
         start = now - timedelta(days=days_back)
@@ -29,9 +49,13 @@ class SceneCatalog:
             "limit": 50,
         }
         try:
-            token = await self.auth.get_token()
+            headers: dict[str, str] = {}
+            url = self.public_search_url or self.catalog_url
+            if not self.public_search_url:
+                token = await self.auth.get_token()
+                headers["Authorization"] = f"Bearer {token}"
             async with httpx.AsyncClient(timeout=30) as client:
-                response = await client.post(self.catalog_url, json=query, headers={"Authorization": f"Bearer {token}"})
+                response = await client.post(url, json=query, headers=headers)
             response.raise_for_status()
             items = response.json().get("features", [])
             if not items:
@@ -54,6 +78,13 @@ class SceneCatalog:
             if not compatible:
                 raise LookupError("No Sentinel-1 IW dual-polarization scene found")
             item = max(compatible, key=lambda candidate: candidate.get("properties", {}).get("datetime", ""))
+            item = deepcopy(item)
+            if self.public_search_url:
+                for asset in item.get("assets", {}).values():
+                    href = asset.get("href")
+                    if href:
+                        asset["href"] = self._public_asset_url(str(href))
+                item["caspian:provider"] = self.provider
             properties = item.get("properties", {})
             external_id = str(item.get("id", ""))
             acquisition_time = properties.get("datetime")
@@ -79,8 +110,9 @@ class SceneCatalog:
                 "bbox": item.get("bbox") or box.as_list,
                 "status": "available",
                 "source_metadata": item,
-                "preview_url": None,
+                "preview_url": item.get("assets", {}).get("thumbnail", {}).get("href"),
             }
-        except httpx.HTTPStatusError as exc:
-            logger.error("Sentinel catalog request returned %s", exc.response.status_code)
+        except (httpx.HTTPStatusError, httpx.RequestError) as exc:
+            status = exc.response.status_code if isinstance(exc, httpx.HTTPStatusError) else "network-error"
+            logger.error("Sentinel catalog request returned %s", status)
             raise RuntimeError("Sentinel catalog request failed") from exc

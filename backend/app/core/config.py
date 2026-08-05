@@ -9,9 +9,8 @@ class Settings(BaseSettings):
     cdse_client_id: str = ""
     cdse_client_secret: str = ""
     cdse_base_url: str = "https://sh.dataspace.copernicus.eu"
-    cdse_token_url: str = (
-        "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
-    )
+    earth_search_url: str = "https://earth-search.aws.element84.com/v1"
+    cdse_token_url: str = "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
     database_url: str = "postgresql://guardian:guardian@db:5432/guardian"
     redis_url: str = "redis://redis:6379/0"
     model_path: str = "backend/app/ml/weights/oil_unet.pt"
