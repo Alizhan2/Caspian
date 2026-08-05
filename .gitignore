@@ -1,0 +1,39 @@
+# Secrets and local runtime configuration
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.pytest_tmp/
+.ruff_cache/
+.venv/
+venv/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/tsconfig.tsbuildinfo
+frontend/.npm-cache/
+.pnpm-store/
+.playwright-cli/
+
+# Generated geospatial and report artifacts
+data/*
+backend/data/*
+!data/.gitkeep
+!backend/data/.gitkeep
+*.tif
+*.tiff
+*.pt
+*.pth
+*.onnx
+
+# Local logs and editor files
+*.log
+.idea/
+.vscode/
+Thumbs.db
+.DS_Store
