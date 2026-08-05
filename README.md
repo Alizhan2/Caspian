@@ -10,6 +10,7 @@ Live-only platform for Sentinel-1 SAR screening of potential oil-like anomalies 
 - Range-based VV/VH crop from public Sentinel-1 Cloud Optimized GeoTIFFs, so the full source products are not downloaded.
 - Optional Copernicus Data Space OAuth2 and Process API fallback with token reuse.
 - Local open-source U-Net/ResNet34 inference through `segmentation-models-pytorch`; no proprietary inference API.
+- Experimental adaptive SAR dark-spot baseline for end-to-end live screening when validated U-Net weights are unavailable.
 - Fail-closed model loading with checkpoint SHA-256 included in every model version.
 - Configurable confidence and min/max area filters.
 - PostGIS persistence for AOIs, subscriptions, scenes, jobs, detections, reports and review history.
@@ -39,7 +40,7 @@ Earth Search / Copernicus   U-Net/ResNet34
 
 1. Copy `.env.example` to `.env`. The default Earth Search catalog is public and needs no API key.
 2. Optionally add `CDSE_CLIENT_ID` and `CDSE_CLIENT_SECRET` for the Copernicus Process API fallback.
-3. Place a validated two-channel U-Net checkpoint at `models/oil_unet.pt`.
+3. For validated ML inference, place a two-channel U-Net checkpoint at `models/oil_unet.pt`. Without it, the explicitly labelled experimental SAR baseline is used.
 4. Change all example database and MinIO passwords before internet deployment.
 5. Install Docker Desktop, then start the stack.
 
@@ -104,7 +105,7 @@ Example:
 
 ## Model requirements
 
-The runtime expects a `segmentation_models_pytorch.Unet` with a ResNet34 encoder, two input channels (`VV`, `VH`) and one output class. A checkpoint must be trained and evaluated on labelled Caspian SAR data split by both date and region. Record precision, recall, IoU, false alarms per scene and the selected threshold. Until that evaluation is complete, all outputs remain experimental screening signals.
+The validated runtime target is a `segmentation_models_pytorch.Unet` with a ResNet34 encoder, two input channels (`VV`, `VH`) and one output class. A checkpoint must be trained and evaluated on labelled Caspian SAR data split by both date and region. Record precision, recall, IoU, false alarms per scene and the selected threshold. Until that evaluation is complete, the adaptive SAR baseline keeps the live pipeline operational, but all outputs remain experimental screening signals and its scores are not calibrated oil probabilities.
 
 Ollama is not a replacement for U-Net or SegFormer: an LLM cannot provide reliable pixel-wise SAR segmentation. It is restricted to summarising already computed metrics under a prompt that forbids invented wind, AIS, weather or chemical evidence.
 
@@ -127,12 +128,13 @@ These are not silently simulated by the current build.
 
 ## Verification performed in this workspace
 
-- Backend: 10 tests passed.
+- Backend: 13 tests passed.
 - SQLAlchemy mapper configuration: passed.
 - Frontend TypeScript and Vite production build: passed.
 - Docker Compose infrastructure: PostGIS, Redis and MinIO healthy.
 - Live satellite discovery: Earth Search returned Sentinel-1D scene `S1D_IW_GRDH_1SDV_20260802T142102_20260802T142127_003948_00727D` acquired on 2026-08-02.
 - Live imagery crop: VV/VH source ranges were read into a georeferenced 512 x 512, two-band GeoTIFF without downloading the complete source products.
+- End-to-end live screening: Celery processed a real Sentinel-1 crop through the experimental adaptive SAR baseline, stored seven candidate polygons in PostGIS and uploaded the raster, preview and mask to MinIO.
 - Real model inference: not executed because no validated checkpoint is present.
 
 Official integration references: [Earth Search examples](https://element84.com/earth-search/examples/), [Copernicus Sentinel Hub authentication](https://documentation.dataspace.copernicus.eu/APIs/SentinelHub/Overview/Authentication.html), [Sentinel-1 GRD Process API](https://documentation.dataspace.copernicus.eu/APIs/SentinelHub/Data/S1GRD.html), and [SkyTruth Cerulean Cloud](https://github.com/SkyTruth/cerulean-cloud) as an architectural reference for human-reviewed oil-slick monitoring.

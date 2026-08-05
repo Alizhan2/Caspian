@@ -49,6 +49,7 @@ services:
       EARTH_SEARCH_URL: ${EARTH_SEARCH_URL:-https://earth-search.aws.element84.com/v1}
       MODEL_PATH: /workspace/models/oil_unet.pt
       MODEL_THRESHOLD: ${MODEL_THRESHOLD:-0.58}
+      EXPERIMENTAL_BASELINE_ENABLED: ${EXPERIMENTAL_BASELINE_ENABLED:-true}
       STORAGE_PATH: /workspace/data
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-guardian}

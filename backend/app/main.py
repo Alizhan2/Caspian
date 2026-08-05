@@ -46,7 +46,11 @@ repo = PostgresRepository(settings.database_url)
 auth = CopernicusAuth(settings.cdse_client_id, settings.cdse_client_secret, settings.cdse_token_url)
 catalog = SceneCatalog(auth, settings.cdse_base_url, settings.earth_search_url)
 process = SentinelProcess(auth, settings.cdse_base_url, settings.storage_path)
-inference = OilUnetInference(settings.model_path, settings.model_threshold)
+inference = OilUnetInference(
+    settings.model_path,
+    settings.model_threshold,
+    settings.experimental_baseline_enabled,
+)
 real_analysis = RealOilAnalysis(process, inference)
 storage = ObjectStorage(
     settings.minio_endpoint,
@@ -138,6 +142,8 @@ async def health() -> dict:
         "satellite_connected": state["satellite_ready"],
         "satellite_provider": catalog.provider,
         "model_configured": inference.ready,
+        "model_validated": inference.validated,
+        "screening_backend": inference.backend,
         **state,
         "ollama_enabled": settings.ollama_enabled,
         "model_version": inference.model_version,
@@ -225,7 +231,11 @@ async def run_analysis(job_id: UUID) -> None:
         detection["image_url"], detection["mask_url"] = _asset_url(image_key), _asset_url(mask_key)
         detection["explanation"] = await explainer.explain(detection)
         risk = calculate_risk(
-            detection["mean_confidence"], detection["max_confidence"], detection["area_km2"], settings
+            detection["mean_confidence"],
+            detection["max_confidence"],
+            detection["area_km2"],
+            settings,
+            model_validated=inference.validated,
         )
         detection.update(
             id=uuid4(),

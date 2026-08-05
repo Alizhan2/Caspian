@@ -26,10 +26,12 @@ def raster_mask_to_geojson(mask: Any, transform: Any, crs: Any = "EPSG:4326", mi
     from shapely.geometry import mapping, shape
 
     valid = np.asarray(mask, dtype="uint8") > 0
+    pixel_area = abs(transform.a * transform.e - transform.b * transform.d)
     features: list[dict[str, Any]] = []
     for geometry, value in shapes(valid.astype("uint8"), mask=valid, transform=transform):
         polygon = shape(geometry)
-        if value == 1 and polygon.area >= min_pixels:
+        pixel_count = polygon.area / pixel_area if pixel_area else 0
+        if value == 1 and pixel_count >= min_pixels:
             features.append({"type": "Feature", "properties": {"source": "sentinel-1"}, "geometry": mapping(polygon)})
     return {
         "type": "FeatureCollection",

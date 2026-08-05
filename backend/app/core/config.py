@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     model_path: str = "backend/app/ml/weights/oil_unet.pt"
     storage_path: str = "./data"
     model_threshold: float = 0.58
+    experimental_baseline_enabled: bool = True
     min_detection_area_km2: float = 0.005
     max_detection_area_km2: float = 250.0
     minio_endpoint: str = "minio:9000"

@@ -73,6 +73,30 @@ def test_vv_vh_normalization_shape_and_range():
     assert float(prepared.tensor.max()) <= 1
 
 
+def test_public_digital_amplitudes_keep_contrast_after_normalization():
+    vv = np.array([[20, 40], [80, 160]], dtype=np.float32)
+    vh = np.array([[10, 20], [40, 80]], dtype=np.float32)
+    prepared = normalize_vv_vh(vv, vh)
+    assert float(prepared.tensor[0].min()) == pytest.approx(0)
+    assert float(prepared.tensor[0].max()) == pytest.approx(1)
+    assert np.unique(prepared.tensor[0]).size > 2
+
+
+def test_experimental_baseline_is_versioned_and_masks_invalid_pixels(tmp_path: Path):
+    inference = OilUnetInference(str(tmp_path / "missing.pt"), experimental_baseline_enabled=True)
+    image = np.full((2, 64, 64), 0.7, dtype=np.float32)
+    image[:, 24:40, 24:40] = 0.1
+    valid = np.ones((64, 64), dtype=bool)
+    valid[0, 0] = False
+    probability, mask = inference.predict(image, valid)
+    assert inference.ready is True
+    assert inference.validated is False
+    assert inference.model_version.endswith(":experimental")
+    assert probability[0, 0] == 0
+    assert mask[0, 0] == 0
+    assert probability[32, 32] > probability[4, 4]
+
+
 def test_mask_to_polygon_and_area():
     mask = np.array([[0, 0, 0], [0, 1, 1], [0, 1, 1]], dtype=np.uint8)
     geojson = raster_mask_to_geojson(mask, from_bounds(51, 42, 52, 43, 3, 3), min_pixels=0)
@@ -80,10 +104,19 @@ def test_mask_to_polygon_and_area():
     assert polygon_area_km2(geometry) > 0
 
 
+def test_vectorizer_minimum_is_measured_in_pixels():
+    mask = np.zeros((10, 10), dtype=np.uint8)
+    mask[2:5, 2:5] = 1
+    transform = from_bounds(51, 42, 52, 43, 10, 10)
+    assert len(raster_mask_to_geojson(mask, transform, min_pixels=8)["features"]) == 1
+    assert len(raster_mask_to_geojson(mask, transform, min_pixels=10)["features"]) == 0
+
+
 def test_risk_logic_is_configurable():
     settings = Settings()
     assert calculate_risk(0.80, 0.90, 0.25, settings).level.value == "HIGH"
     assert calculate_risk(0.30, 0.40, 0.01, settings).level.value == "LOW"
+    assert calculate_risk(0.80, 0.90, 0.25, settings, model_validated=False).level.value == "MEDIUM"
 
 
 @pytest.mark.asyncio

@@ -10,8 +10,21 @@ class RiskResult:
     explanation: str
 
 
-def calculate_risk(mean_confidence: float, max_confidence: float, area_km2: float, settings: Settings) -> RiskResult:
+def calculate_risk(
+    mean_confidence: float,
+    max_confidence: float,
+    area_km2: float,
+    settings: Settings,
+    model_validated: bool = True,
+) -> RiskResult:
     """Return a configurable AI screening score, never an official conclusion."""
+    if not model_validated and (
+        mean_confidence >= settings.low_confidence_threshold or area_km2 >= settings.medium_area_km2
+    ):
+        return RiskResult(
+            RiskLevel.MEDIUM,
+            "Experimental SAR screening priority; the score is not calibrated as oil probability.",
+        )
     if max_confidence >= settings.high_confidence_threshold and area_km2 >= settings.high_area_km2:
         return RiskResult(RiskLevel.HIGH, "High AI screening score based on confidence and estimated area.")
     if mean_confidence >= settings.low_confidence_threshold or area_km2 >= settings.medium_area_km2:

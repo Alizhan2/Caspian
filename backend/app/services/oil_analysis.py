@@ -34,7 +34,7 @@ class RealOilAnalysis:
             if raster.count < 2:
                 raise ValueError("Sentinel Process response must contain VV and VH bands")
             prepared = normalize_vv_vh(raster.read(1), raster.read(2), raster.nodata)
-            probability, binary = self.inference.predict(prepared.tensor)
+            probability, binary = self.inference.predict(prepared.tensor, prepared.valid_mask)
             geometry = raster_mask_to_geojson(binary, raster.transform, raster.crs or "EPSG:4326")
         preview_path = raster_path.with_suffix(".preview.png")
         mask_path = raster_path.with_suffix(".mask.png")
@@ -54,6 +54,8 @@ class RealOilAnalysis:
             "max_confidence": float(confidence_values.max()),
             "coordinates": [round(value, 4) for value in first_ring],
             "model_version": self.inference.model_version,
+            "model_validated": self.inference.validated,
+            "screening_backend": self.inference.backend,
             "image_url": str(preview_path),
             "mask_url": str(mask_path),
             "raster_path": str(raster_path),

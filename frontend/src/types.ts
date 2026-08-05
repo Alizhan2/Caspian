@@ -8,6 +8,8 @@ export interface Health {
   satellite_connected: boolean;
   satellite_provider: string;
   model_configured: boolean;
+  model_validated: boolean;
+  screening_backend: string;
   live_ready: boolean;
   components: Record<string, boolean>;
   ollama_enabled: boolean;
