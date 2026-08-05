@@ -5,7 +5,7 @@ services:
       POSTGRES_DB: guardian
       POSTGRES_USER: guardian
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-guardian-local-only}
-    ports: ["5432:5432"]
+    ports: ["127.0.0.1:5432:5432"]
     volumes: ["guardian_db:/var/lib/postgresql/data"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U guardian -d guardian"]
@@ -16,6 +16,7 @@ services:
   redis:
     image: redis:7.4-alpine
     command: redis-server --appendonly yes
+    ports: ["127.0.0.1:6379:6379"]
     volumes: ["guardian_redis:/data"]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -29,7 +30,7 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-guardian}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-change-me-in-production}
-    ports: ["9000:9000", "9001:9001"]
+    ports: ["127.0.0.1:9000:9000", "127.0.0.1:9001:9001"]
     volumes: ["guardian_objects:/data"]
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
@@ -38,6 +39,7 @@ services:
       retries: 20
 
   backend: &backend
+    image: caspian-guardian-backend:local
     build: ./backend
     environment: &backend-environment
       DATABASE_URL: postgresql://guardian:${POSTGRES_PASSWORD:-guardian-local-only}@db:5432/guardian
@@ -54,7 +56,7 @@ services:
       OLLAMA_ENABLED: ${OLLAMA_ENABLED:-false}
       OLLAMA_BASE_URL: http://ollama:11434
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen2.5:7b-instruct}
-    ports: ["8000:8000"]
+    ports: ["127.0.0.1:8000:8000"]
     volumes:
       - ./data:/workspace/data
       - ./models:/workspace/models:ro
@@ -77,7 +79,7 @@ services:
     image: ollama/ollama:latest
     profiles: ["local-ai"]
     volumes: ["guardian_ollama:/root/.ollama"]
-    ports: ["11434:11434"]
+    ports: ["127.0.0.1:11434:11434"]
 
   frontend:
     image: node:20-alpine
@@ -85,7 +87,7 @@ services:
     command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
     environment:
       VITE_API_URL: http://localhost:8000/api
-    ports: ["5173:5173"]
+    ports: ["127.0.0.1:5173:5173"]
     volumes: ["./frontend:/workspace/frontend"]
     depends_on: [backend]
 

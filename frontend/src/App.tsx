@@ -22,7 +22,7 @@ const text = {
   ru: {
     nav: ["Обзор", "Анализ зоны", "Обнаружения", "Отчёты", "О проекте"],
     titles: ["Экологический обзор", "Анализ выбранной зоны", "Журнал обнаружений", "Карточка обнаружения", "Экологические отчёты", "О платформе"],
-    workspace: "Рабочее пространство", system: "Состояние системы", operational: "Система работает", connecting: "Подключение…",
+    workspace: "Рабочее пространство", system: "Состояние системы", operational: "Система работает", connecting: "Подключение…", configurationRequired: "Требуется настройка", setupMode: "НАСТРОЙКА",
     mission: "Спутниковый мониторинг Каспийского моря", live: "Спутниковые данные", latest: "последний доступный снимок",
     newAnalysis: "Новый анализ", readiness: "Готовность live-режима", readinessText: "Для реального анализа подключите Copernicus и проверенные веса модели.",
     copernicus: "Copernicus", model: "AI-модель", ready: "готово", needed: "не подключено",
@@ -52,7 +52,7 @@ const text = {
   kk: {
     nav: ["Шолу", "Аймақты талдау", "Анықтаулар", "Есептер", "Жоба туралы"],
     titles: ["Экологиялық шолу", "Таңдалған аймақты талдау", "Анықтаулар журналы", "Анықтау картасы", "Экологиялық есептер", "Платформа туралы"],
-    workspace: "Жұмыс кеңістігі", system: "Жүйе күйі", operational: "Жүйе жұмыс істеп тұр", connecting: "Қосылу…",
+    workspace: "Жұмыс кеңістігі", system: "Жүйе күйі", operational: "Жүйе жұмыс істеп тұр", connecting: "Қосылу…", configurationRequired: "Баптау қажет", setupMode: "БАПТАУ",
     mission: "Каспий теңізінің спутниктік мониторингі", live: "Спутниктік деректер", latest: "соңғы қолжетімді түсірілім",
     newAnalysis: "Жаңа талдау", readiness: "Live режимінің дайындығы", readinessText: "Нақты талдау үшін Copernicus пен тексерілген модель салмақтарын қосыңыз.",
     copernicus: "Copernicus", model: "AI-модель", ready: "дайын", needed: "қосылмаған",
@@ -132,7 +132,7 @@ export default function App() {
       <div className="sidebar-label">{t.workspace}</div>
       <nav>{navViews.map((item, index) => <button key={item} className={view === item || (item === "detections" && view === "detection") ? "nav-item active" : "nav-item"} onClick={() => setView(item)}><span>{icons[index]}</span>{t.nav[index]}{item === "detections" && detections.length ? <em>{detections.length}</em> : null}</button>)}</nav>
       <div className="sidebar-spacer" />
-      <div className="system-chip"><span className={health?.status === "ok" ? "pulse" : "pulse offline"} /><div><small>{t.system}</small><strong>{health?.status === "ok" ? t.operational : t.connecting}</strong></div></div>
+      <div className="system-chip"><span className={health?.status === "ok" ? "pulse" : "pulse offline"} /><div><small>{t.system}</small><strong>{health ? (health.status === "ok" ? t.operational : t.configurationRequired) : t.connecting}</strong></div></div>
       <p className="sidebar-foot">{t.humanText}</p>
     </aside>
 
@@ -142,7 +142,7 @@ export default function App() {
       <section className={`readiness-banner ${health?.live_ready ? "live" : ""}`}><div><span>{t.readiness}</span><strong>{health?.live_ready ? t.latest : t.readinessText}</strong></div><div className="readiness-checks"><i className={health?.credentials_configured ? "ready" : ""}>{t.copernicus}: {health?.credentials_configured ? t.ready : t.needed}</i><i className={health?.model_configured ? "ready" : ""}>{t.model}: {health?.model_configured ? t.ready : t.needed}</i></div></section>
 
       {view === "about" ? <AboutPage t={t} onAnalyze={() => setView("analysis")} /> : view === "detection" && activeDetection ? <DetectionDetailsPage detection={activeDetection} t={t} language={language} onBack={() => setView("detections")} onReport={() => void generateReport(activeDetection)} onReview={reviewDetection} /> : <>
-        <section className="kpi-grid"><Kpi label={t.monitored} value="—" note={t.chooseZone} /><Kpi label={t.scenes} value={scene ? "1" : "0"} note={scene ? formatDate(scene.acquisition_time, language) : t.noScene} /><Kpi label={t.signals} value={String(detections.length)} note={detections.length ? t.latestDetection : t.noAnalyses} /><Kpi label={t.mode} value={health?.live_ready ? "LIVE" : "SETUP"} note={health?.live_ready ? t.latest : t.needed} tone={health?.live_ready ? "good" : "attention"} /></section>
+        <section className="kpi-grid"><Kpi label={t.monitored} value="—" note={t.chooseZone} /><Kpi label={t.scenes} value={scene ? "1" : "0"} note={scene ? formatDate(scene.acquisition_time, language) : t.noScene} /><Kpi label={t.signals} value={String(detections.length)} note={detections.length ? t.latestDetection : t.noAnalyses} /><Kpi label={t.mode} value={health?.live_ready ? "LIVE" : t.setupMode} note={health?.live_ready ? t.latest : t.needed} tone={health?.live_ready ? "good" : "attention"} /></section>
         <div className="content-grid"><div className="map-column">
           <div className="area-presets"><div><span className="eyebrow">{t.quickAreas}</span><strong>{t.chooseZone}</strong></div><div>{monitoredAreas.map((area, index) => <button key={area.id} className={selectedPoint?.[0] === area.point[0] && selectedPoint?.[1] === area.point[1] ? "active" : ""} onClick={() => { setSelectedPoint(area.point); setView("analysis"); }}>{t.areaNames[index]}</button>)}</div></div>
           <div className="map-wrap"><MapView detections={detections} scene={scene} selectedPoint={selectedPoint} drawing={drawing} showSatellite={showSatellite} showDetections={showDetections} layerOpacity={layerOpacity} onSelect={(point) => { setSelectedPoint(point); setDrawing(false); }} />

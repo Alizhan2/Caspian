@@ -33,6 +33,7 @@ backend/data/*
 
 # Local logs and editor files
 *.log
+celerybeat-schedule*
 .idea/
 .vscode/
 Thumbs.db
