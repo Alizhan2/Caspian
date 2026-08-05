@@ -117,16 +117,20 @@ Implemented controls include dual-polarization selection, orthorectification, mo
 
 Before operational environmental use, add and validate:
 
-- coastline/water mask;
+- coastline/water mask (implemented when a reviewed land GeoJSON is configured);
 - wind fields at acquisition time;
 - before/after scene comparison;
 - polygon shape features;
-- authorized AIS context;
+- authorized AIS context (implemented through an organization-configured provider endpoint; no AIS is fabricated when absent);
 - organisation accounts and role-based permissions;
 - reviewed-only Telegram/email/webhook delivery;
 - a Caspian-labelled dataset and an independently evaluated checkpoint.
 
 These are not silently simulated by the current build.
+
+### Evidence-source configuration
+
+`COASTLINE_GEOJSON_PATH` must point to a reviewed WGS84 GeoJSON containing **land polygons only**. When configured, candidate pixels that overlap land are removed before vectorization and the result records how many pixels were excluded. `AIS_ENDPOINT` is an authorized provider endpoint that accepts `west`, `south`, `east`, `north`, `start` and `end` query parameters and returns `{ "vessels": [{ "latitude": number, "longitude": number }] }`. `AIS_API_KEY` is sent as a Bearer token. Without either source, the result remains explicitly `unavailable`; it never substitutes synthetic coastline or vessel data.
 
 ## Verification performed in this workspace
 

@@ -136,6 +136,7 @@ class DetectionResponse(BaseModel):
     mask_url: str
     warning: str
     explanation: str | None = None
+    evidence_context: dict[str, Any] | None = None
 
 
 class ReviewAction(str, Enum):

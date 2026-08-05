@@ -38,6 +38,10 @@ class Settings(BaseSettings):
     high_confidence_threshold: float = 0.75
     medium_area_km2: float = 0.05
     high_area_km2: float = 0.2
+    coastline_geojson_path: str = ""
+    ais_endpoint: str = ""
+    ais_api_key: str = ""
+    ais_timeout_seconds: int = 12
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

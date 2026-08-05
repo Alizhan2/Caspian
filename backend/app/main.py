@@ -30,6 +30,8 @@ from app.schemas import (
     SceneSearchRequest,
     utc_now,
 )
+from app.services.ais_context import AisContext
+from app.services.coastline import CoastlineMask
 from app.services.copernicus_auth import CopernicusAuth
 from app.services.inference import OilUnetInference
 from app.services.label_pack import LabelPack
@@ -54,7 +56,9 @@ inference = OilUnetInference(
     settings.model_threshold,
     settings.experimental_baseline_enabled,
 )
-real_analysis = RealOilAnalysis(process, inference)
+coastline = CoastlineMask(settings.coastline_geojson_path)
+ais_context = AisContext(settings.ais_endpoint, settings.ais_api_key, settings.ais_timeout_seconds)
+real_analysis = RealOilAnalysis(process, inference, coastline)
 storage = ObjectStorage(
     settings.minio_endpoint,
     settings.minio_access_key,
@@ -235,6 +239,9 @@ async def run_analysis(job_id: UUID) -> None:
         storage.upload(Path(detection["mask_url"]), mask_key, "image/png")
         detection["image_url"], detection["mask_url"] = _asset_url(image_key), _asset_url(mask_key)
         detection["explanation"] = await explainer.explain(detection)
+        detection.setdefault("evidence_context", {})["ais"] = await ais_context.for_detection(
+            detection["geometry"], job["bbox"], scene["acquisition_time"]
+        )
         risk = calculate_risk(
             detection["mean_confidence"],
             detection["max_confidence"],

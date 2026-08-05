@@ -206,6 +206,7 @@ class PostgresRepository:
                 mask_path=item.get("mask_url"),
                 warning=item["warning"],
                 explanation=item.get("explanation"),
+                evidence_context=item.get("evidence_context", {}),
             )
             session.add(row)
             session.flush()
@@ -251,6 +252,7 @@ class PostgresRepository:
             "mask_url": row.mask_path or "",
             "warning": row.warning,
             "explanation": row.explanation,
+            "evidence_context": row.evidence_context or {},
         }
 
     def add_review(self, detection_id: UUID, action: str, actor: str, note: str | None) -> dict[str, Any]:

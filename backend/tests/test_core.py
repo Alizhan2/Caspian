@@ -1,4 +1,5 @@
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -9,6 +10,8 @@ from rasterio.transform import from_bounds
 import app.main as main_module
 from app.core.config import Settings
 from app.schemas import DetectionReviewRequest, LabelReviewRequest
+from app.services.ais_context import AisContext
+from app.services.coastline import CoastlineMask
 from app.services.copernicus_auth import CopernicusAuth
 from app.services.inference import OilUnetInference, load_validated_model_card
 from app.services.label_pack import LabelPack
@@ -123,6 +126,46 @@ def test_vectorizer_minimum_is_measured_in_pixels():
     transform = from_bounds(51, 42, 52, 43, 10, 10)
     assert len(raster_mask_to_geojson(mask, transform, min_pixels=8)["features"]) == 1
     assert len(raster_mask_to_geojson(mask, transform, min_pixels=10)["features"]) == 0
+
+
+def test_configured_coastline_mask_removes_land_candidate_pixels(tmp_path: Path):
+    coast = tmp_path / "land.geojson"
+    coast.write_text(
+        json.dumps(
+            {
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "type": "Feature",
+                        "geometry": {
+                            "type": "Polygon",
+                            "coordinates": [[[51, 42], [51.5, 42], [51.5, 43], [51, 43], [51, 42]]],
+                        },
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    filtered, context = CoastlineMask(str(coast)).apply(
+        np.ones((2, 2), dtype=bool),
+        from_bounds(51, 42, 52, 43, 2, 2),
+        "EPSG:4326",
+        np.ones((2, 2), dtype=bool),
+    )
+    assert context["status"] == "applied"
+    assert context["land_pixels_removed"] == 2
+    assert filtered.sum() == 2
+
+
+@pytest.mark.asyncio
+async def test_ais_context_is_unavailable_without_authorized_endpoint():
+    context = await AisContext().for_detection(
+        {"type": "Polygon", "coordinates": [[[51, 42], [52, 42], [52, 43], [51, 42]]]},
+        [51, 42, 52, 43],
+        datetime(2026, 8, 5, tzinfo=timezone.utc),
+    )
+    assert context == {"status": "unavailable", "reason": "authorized_ais_endpoint_not_configured"}
 
 
 def test_risk_logic_is_configurable():
