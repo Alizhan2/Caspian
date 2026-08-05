@@ -4,11 +4,12 @@ import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import { api } from "./api";
 import type { AnalysisStatus, Detection, Health, RiskLevel, Scene } from "./types";
 import { GlassCard } from "./components/GlassCard";
+import { LabelingPage } from "./components/LabelingPage";
 import { MapView } from "./components/MapView";
 import { StatusPill } from "./components/StatusPill";
 
 type Language = "ru" | "kk";
-type View = "dashboard" | "analysis" | "detections" | "detection" | "reports" | "about";
+type View = "dashboard" | "analysis" | "detections" | "detection" | "reports" | "labeling" | "about";
 
 const DEFAULT_BBOX = [51.2, 42.25, 52.5, 43.2];
 const monitoredAreas = [
@@ -20,8 +21,8 @@ const monitoredAreas = [
 
 const text = {
   ru: {
-    nav: ["Обзор", "Анализ зоны", "Обнаружения", "Отчёты", "О проекте"],
-    titles: ["Экологический обзор", "Анализ выбранной зоны", "Журнал обнаружений", "Карточка обнаружения", "Экологические отчёты", "О платформе"],
+    nav: ["Обзор", "Анализ зоны", "Обнаружения", "Отчёты", "Разметка", "О проекте"],
+    titles: ["Экологический обзор", "Анализ выбранной зоны", "Журнал обнаружений", "Карточка обнаружения", "Экологические отчёты", "Разметка датасета", "О платформе"],
     workspace: "Рабочее пространство", system: "Состояние системы", operational: "Система работает", connecting: "Подключение…", configurationRequired: "Требуется настройка", setupMode: "НАСТРОЙКА",
     mission: "Спутниковый мониторинг Каспийского моря", live: "Спутниковые данные", latest: "последний доступный снимок",
     newAnalysis: "Новый анализ", readiness: "Готовность live-режима", readinessText: "Подключаем публичный каталог Sentinel-1 и локальный скрининг.", satelliteReadyText: "Sentinel-1 подключён. Модуль скрининга пока недоступен.", baselineReadyText: "Sentinel-1 и экспериментальный SAR-скрининг подключены. Каждый сигнал требует проверки специалистом.", validatedReadyText: "Sentinel-1 и проверенная open-source модель готовы к скринингу.",
@@ -50,8 +51,8 @@ const text = {
     errors: { load: "Не удалось подключиться к API", scene: "Не удалось найти сцену", analysis: "Не удалось запустить анализ", status: "Не удалось получить статус", report: "Не удалось создать отчёт" },
   },
   kk: {
-    nav: ["Шолу", "Аймақты талдау", "Анықтаулар", "Есептер", "Жоба туралы"],
-    titles: ["Экологиялық шолу", "Таңдалған аймақты талдау", "Анықтаулар журналы", "Анықтау картасы", "Экологиялық есептер", "Платформа туралы"],
+    nav: ["Шолу", "Аймақты талдау", "Анықтаулар", "Есептер", "Белгілеу", "Жоба туралы"],
+    titles: ["Экологиялық шолу", "Таңдалған аймақты талдау", "Анықтаулар журналы", "Анықтау картасы", "Экологиялық есептер", "Деректерді белгілеу", "Платформа туралы"],
     workspace: "Жұмыс кеңістігі", system: "Жүйе күйі", operational: "Жүйе жұмыс істеп тұр", connecting: "Қосылу…", configurationRequired: "Баптау қажет", setupMode: "БАПТАУ",
     mission: "Каспий теңізінің спутниктік мониторингі", live: "Спутниктік деректер", latest: "соңғы қолжетімді түсірілім",
     newAnalysis: "Жаңа талдау", readiness: "Live режимінің дайындығы", readinessText: "Sentinel-1 ашық каталогы мен жергілікті скринингті қосамыз.", satelliteReadyText: "Sentinel-1 қосылды. Скрининг модулі әзірге қолжетімсіз.", baselineReadyText: "Sentinel-1 және эксперименттік SAR-скрининг қосылды. Әр сигнал маман тексеруін қажет етеді.", validatedReadyText: "Sentinel-1 және тексерілген ашық модель скринингке дайын.",
@@ -111,9 +112,9 @@ export default function App() {
   const activeDetection = selectedDetection ?? latest;
   const running = job?.status === "running" || job?.status === "queued";
   const selectedBbox = useMemo(() => selectedPoint ? [selectedPoint[1] - .34, selectedPoint[0] - .16, selectedPoint[1] + .34, selectedPoint[0] + .16] : DEFAULT_BBOX, [selectedPoint]);
-  const views: View[] = ["dashboard", "analysis", "detections", "detection", "reports", "about"];
-  const navViews: View[] = ["dashboard", "analysis", "detections", "reports", "about"];
-  const icons = ["⌂", "⌁", "◉", "▤", "○"];
+  const views: View[] = ["dashboard", "analysis", "detections", "detection", "reports", "labeling", "about"];
+  const navViews: View[] = ["dashboard", "analysis", "detections", "reports", "labeling", "about"];
+  const icons = ["⌂", "⌁", "◉", "▤", "✎", "○"];
 
   useEffect(() => { void loadData(); }, []);
 
@@ -141,7 +142,7 @@ export default function App() {
       {error ? <div className="error-banner">{error}<button onClick={() => setError(null)} aria-label="Закрыть">×</button></div> : null}
       <section className={`readiness-banner ${health?.live_ready ? "live" : ""}`}><div><span>{t.readiness}</span><strong>{health?.live_ready ? (health.model_validated ? t.validatedReadyText : t.baselineReadyText) : health?.satellite_connected ? t.satelliteReadyText : t.readinessText}</strong></div><div className="readiness-checks"><i className={health?.satellite_connected ? "ready" : ""}>{t.copernicus}: {health?.satellite_connected ? t.ready : t.needed}</i><i className={health?.model_configured ? "ready" : ""}>{t.model}: {health?.model_configured ? (health.model_validated ? t.ready : t.experimental) : t.needed}</i></div></section>
 
-      {view === "about" ? <AboutPage t={t} onAnalyze={() => setView("analysis")} /> : view === "detection" && activeDetection ? <DetectionDetailsPage detection={activeDetection} t={t} language={language} onBack={() => setView("detections")} onReport={() => void generateReport(activeDetection)} onReview={reviewDetection} /> : <>
+      {view === "about" ? <AboutPage t={t} onAnalyze={() => setView("analysis")} /> : view === "labeling" ? <LabelingPage language={language} /> : view === "detection" && activeDetection ? <DetectionDetailsPage detection={activeDetection} t={t} language={language} onBack={() => setView("detections")} onReport={() => void generateReport(activeDetection)} onReview={reviewDetection} /> : <>
         <section className="kpi-grid"><Kpi label={t.monitored} value="—" note={t.chooseZone} /><Kpi label={t.scenes} value={scene ? "1" : "0"} note={scene ? formatDate(scene.acquisition_time, language) : t.noScene} /><Kpi label={t.signals} value={String(detections.length)} note={detections.length ? t.latestDetection : t.noAnalyses} /><Kpi label={t.mode} value={health?.live_ready ? "LIVE" : health?.satellite_connected ? t.satelliteMode : t.setupMode} note={health?.satellite_connected ? health.satellite_provider : t.needed} tone={health?.satellite_connected ? "good" : "attention"} /></section>
         <div className="content-grid"><div className="map-column">
           <div className="area-presets"><div><span className="eyebrow">{t.quickAreas}</span><strong>{t.chooseZone}</strong></div><div>{monitoredAreas.map((area, index) => <button key={area.id} className={selectedPoint?.[0] === area.point[0] && selectedPoint?.[1] === area.point[1] ? "active" : ""} onClick={() => { setSelectedPoint(area.point); setView("analysis"); }}>{t.areaNames[index]}</button>)}</div></div>
@@ -154,7 +155,7 @@ export default function App() {
         </div><aside className="insight-column"><SceneCard t={t} language={language} scene={scene} /><DetectionCard t={t} detection={activeDetection} onAnalyze={() => setView("analysis")} onOpen={() => activeDetection && openDetection(activeDetection)} /><GlassCard className="verification-card"><div className="verification-icon">✓</div><div><strong>{t.humanRequired}</strong><p>{t.humanText}</p></div></GlassCard>{activeDetection ? <button className="button report-button" onClick={() => void generateReport(activeDetection)}>▤ {t.report}<span>↗</span></button> : null}</aside></div>
       </>}
     </main>
-    <nav className="mobile-nav" aria-label="Mobile navigation">{navViews.slice(0, 4).map((item, index) => <button key={item} className={view === item || (item === "detections" && view === "detection") ? "active" : ""} onClick={() => setView(item)}><span>{icons[index]}</span><small>{t.nav[index]}</small></button>)}</nav>
+    <nav className="mobile-nav" aria-label="Mobile navigation">{navViews.slice(0, 5).map((item, index) => <button key={item} className={view === item || (item === "detections" && view === "detection") ? "active" : ""} onClick={() => setView(item)}><span>{icons[index]}</span><small>{t.nav[index]}</small></button>)}</nav>
   </div>;
 }
 

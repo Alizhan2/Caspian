@@ -159,6 +159,55 @@ class DetectionReviewResponse(BaseModel):
     created_at: datetime
 
 
+class LabelReviewStatus(str, Enum):
+    REVIEWED_POSITIVE = "reviewed_positive"
+    REVIEWED_NEGATIVE = "reviewed_negative"
+
+
+class LabelSampleResponse(BaseModel):
+    sample_id: str
+    scene_id: str
+    acquisition_time: datetime
+    region: str
+    region_name: str
+    bbox: list[float]
+    review_status: str
+    reviewed_by: str | None = None
+    reviewed_at: datetime | None = None
+    polygon_count: int
+    polygons: list[list[list[float]]]
+    preview_url: str
+
+
+class LabelReviewRequest(BaseModel):
+    status: LabelReviewStatus
+    reviewed_by: str = Field(min_length=2, max_length=120)
+    note: str | None = Field(default=None, max_length=2000)
+    polygons: list[list[list[float]]] = Field(default_factory=list, max_length=100)
+
+    @field_validator("reviewed_by")
+    @classmethod
+    def named_reviewer(cls, value: str) -> str:
+        value = value.strip()
+        if len(value) < 2:
+            raise ValueError("reviewer name is required")
+        return value
+
+    @model_validator(mode="after")
+    def consistent_review(self) -> "LabelReviewRequest":
+        if self.status == LabelReviewStatus.REVIEWED_POSITIVE and not self.polygons:
+            raise ValueError("positive review requires at least one polygon")
+        if self.status == LabelReviewStatus.REVIEWED_NEGATIVE and self.polygons:
+            raise ValueError("negative review cannot contain polygons")
+        for polygon in self.polygons:
+            if len(polygon) < 3:
+                raise ValueError("each polygon requires at least three points")
+            for point in polygon:
+                if len(point) != 2:
+                    raise ValueError("polygon points must contain longitude and latitude")
+        return self
+
+
 class ReportRequest(BaseModel):
     language: str = Field(default="ru", pattern="^(ru|kk|en)$")
 

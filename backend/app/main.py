@@ -22,6 +22,8 @@ from app.schemas import (
     DetectionResponse,
     DetectionReviewRequest,
     DetectionReviewResponse,
+    LabelReviewRequest,
+    LabelSampleResponse,
     ReportRequest,
     ReportResponse,
     SceneResponse,
@@ -30,6 +32,7 @@ from app.schemas import (
 )
 from app.services.copernicus_auth import CopernicusAuth
 from app.services.inference import OilUnetInference
+from app.services.label_pack import LabelPack
 from app.services.object_storage import ObjectStorage
 from app.services.oil_analysis import RealOilAnalysis
 from app.services.ollama_explainer import OllamaExplainer
@@ -60,6 +63,7 @@ storage = ObjectStorage(
     settings.minio_secure,
 )
 explainer = OllamaExplainer(settings.ollama_enabled, settings.ollama_base_url, settings.ollama_model)
+label_pack = LabelPack(settings.label_pack_path)
 
 app = FastAPI(
     title="Caspian Guardian AI API",
@@ -320,6 +324,31 @@ async def review_detection(detection_id: UUID, payload: DetectionReviewRequest):
 @app.get("/api/detections/{detection_id}/reviews", response_model=list[DetectionReviewResponse])
 async def review_history(detection_id: UUID):
     return repo.list_reviews(detection_id)
+
+
+@app.get("/api/labeling/samples", response_model=list[LabelSampleResponse])
+async def label_samples():
+    return label_pack.list_samples()
+
+
+@app.get("/api/labeling/samples/{sample_id}/preview")
+async def label_preview(sample_id: str):
+    try:
+        return FileResponse(label_pack.preview(sample_id), media_type="image/png")
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.put("/api/labeling/samples/{sample_id}/review", response_model=LabelSampleResponse)
+async def save_label_review(sample_id: str, payload: LabelReviewRequest):
+    try:
+        return label_pack.review(sample_id, payload)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.get("/api/detections.geojson")

@@ -107,7 +107,7 @@ Example:
 
 The validated runtime target is a `segmentation_models_pytorch.Unet` with a ResNet34 encoder, two input channels (`VV`, `VH`) and one output class. A checkpoint must be trained and evaluated on labelled Caspian SAR data split by both date and region. Record precision, recall, IoU, false alarms per scene and the selected threshold. Until that evaluation is complete, the adaptive SAR baseline keeps the live pipeline operational, but all outputs remain experimental screening signals and its scores are not calibrated oil probabilities.
 
-The reproducible training and annotation workflow is documented in [`training/README.md`](training/README.md). `training.prepare_label_pack` collects real georeferenced patches and review-safe GeoJSON templates for Aktau, Kashagan and Atyrau. Training produces a `candidate` model card; a separate promotion command requires metric, scene, region and date coverage gates plus named human approval. At startup, the backend verifies the model-card status, architecture, channels and checkpoint SHA-256 before marking U-Net as validated.
+The reproducible training and annotation workflow is documented in [`training/README.md`](training/README.md). `training.prepare_label_pack` collects real georeferenced patches and review-safe GeoJSON templates for Aktau, Kashagan and Atyrau. The bilingual operator UI includes an expert-labeling center that saves only explicit reviewed-positive or reviewed-negative decisions. Training produces a `candidate` model card; a separate promotion command requires metric, scene, region and date coverage gates plus named human approval. At startup, the backend verifies the model-card status, architecture, channels and checkpoint SHA-256 before marking U-Net as validated.
 
 Ollama is not a replacement for U-Net or SegFormer: an LLM cannot provide reliable pixel-wise SAR segmentation. It is restricted to summarising already computed metrics under a prompt that forbids invented wind, AIS, weather or chemical evidence.
 
@@ -130,7 +130,7 @@ These are not silently simulated by the current build.
 
 ## Verification performed in this workspace
 
-- Backend, annotation and training pipeline: 20 tests passed.
+- Backend, annotation and training pipeline: 23 tests passed, including reviewer-name validation.
 - SQLAlchemy mapper configuration: passed.
 - Frontend TypeScript and Vite production build: passed.
 - Docker Compose infrastructure: PostGIS, Redis and MinIO healthy.

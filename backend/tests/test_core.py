@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import numpy as np
@@ -7,9 +8,10 @@ from rasterio.transform import from_bounds
 
 import app.main as main_module
 from app.core.config import Settings
-from app.schemas import DetectionReviewRequest
+from app.schemas import DetectionReviewRequest, LabelReviewRequest
 from app.services.copernicus_auth import CopernicusAuth
 from app.services.inference import OilUnetInference, load_validated_model_card
+from app.services.label_pack import LabelPack
 from app.services.ollama_explainer import OllamaExplainer
 from app.services.risk_calculator import calculate_risk
 from app.services.scene_processor import normalize_vv_vh
@@ -143,3 +145,67 @@ def test_review_actions_are_restricted():
     assert DetectionReviewRequest(action="CONFIRM", actor="operator").action.value == "CONFIRM"
     with pytest.raises(ValueError):
         DetectionReviewRequest(action="PUBLISH", actor="operator")
+
+
+def make_label_pack(root: Path) -> LabelPack:
+    (root / "annotations").mkdir(parents=True)
+    (root / "previews").mkdir()
+    (root / "previews" / "aktau-sample.png").write_bytes(b"preview")
+    annotation = {
+        "type": "FeatureCollection",
+        "features": [],
+        "properties": {
+            "review_status": "unreviewed",
+            "reviewed_by": None,
+            "sample_id": "aktau-sample",
+        },
+    }
+    (root / "annotations" / "aktau-sample.geojson").write_text(json.dumps(annotation), encoding="utf-8")
+    record = {
+        "sample_id": "aktau-sample",
+        "scene_id": "S1_TEST",
+        "acquisition_time": "2026-08-01T00:00:00Z",
+        "region": "aktau",
+        "region_name": "Побережье Актау",
+        "bbox": [51.0, 43.0, 52.0, 44.0],
+        "preview": "previews/aktau-sample.png",
+        "annotation": "annotations/aktau-sample.geojson",
+    }
+    (root / "pack.jsonl").write_text(json.dumps(record) + "\n", encoding="utf-8")
+    return LabelPack(root)
+
+
+def test_label_pack_saves_only_explicit_expert_positive_review(tmp_path: Path):
+    pack = make_label_pack(tmp_path)
+    payload = LabelReviewRequest(
+        status="reviewed_positive",
+        reviewed_by="expert",
+        polygons=[[[51.1, 43.1], [51.3, 43.1], [51.2, 43.3]]],
+    )
+    result = pack.review("aktau-sample", payload)
+    assert result["review_status"] == "reviewed_positive"
+    assert result["polygon_count"] == 1
+    assert result["polygons"][0][0] == result["polygons"][0][-1]
+
+
+def test_label_pack_rejects_polygon_outside_scene(tmp_path: Path):
+    pack = make_label_pack(tmp_path)
+    payload = LabelReviewRequest(
+        status="reviewed_positive",
+        reviewed_by="expert",
+        polygons=[[[51.1, 43.1], [55.0, 43.1], [51.2, 43.3]]],
+    )
+    with pytest.raises(ValueError, match="outside"):
+        pack.review("aktau-sample", payload)
+
+
+def test_negative_label_requires_explicit_reviewer_and_no_polygons(tmp_path: Path):
+    pack = make_label_pack(tmp_path)
+    result = pack.review(
+        "aktau-sample",
+        LabelReviewRequest(status="reviewed_negative", reviewed_by="expert", polygons=[]),
+    )
+    assert result["review_status"] == "reviewed_negative"
+    assert result["polygon_count"] == 0
+    with pytest.raises(ValueError, match="reviewer name"):
+        LabelReviewRequest(status="reviewed_negative", reviewed_by="   ", polygons=[])
