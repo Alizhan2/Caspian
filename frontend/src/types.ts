@@ -10,6 +10,7 @@ export interface Health {
   model_configured: boolean;
   model_validated: boolean;
   screening_backend: string;
+  model_validation_status: string;
   live_ready: boolean;
   components: Record<string, boolean>;
   ollama_enabled: boolean;

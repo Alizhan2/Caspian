@@ -9,7 +9,7 @@ import app.main as main_module
 from app.core.config import Settings
 from app.schemas import DetectionReviewRequest
 from app.services.copernicus_auth import CopernicusAuth
-from app.services.inference import OilUnetInference
+from app.services.inference import OilUnetInference, load_validated_model_card
 from app.services.ollama_explainer import OllamaExplainer
 from app.services.risk_calculator import calculate_risk
 from app.services.scene_processor import normalize_vv_vh
@@ -59,6 +59,17 @@ def test_inference_without_checkpoint_fails_closed(tmp_path: Path):
     assert inference.ready is False
     with pytest.raises(RuntimeError, match="checkpoint"):
         inference.predict(np.ones((2, 8, 8), dtype=np.float32))
+
+
+def test_candidate_model_card_is_not_treated_as_validated(tmp_path: Path):
+    checkpoint = tmp_path / "candidate.pt"
+    checkpoint.write_bytes(b"candidate")
+    checkpoint.with_suffix(".json").write_text(
+        '{"schema_version":1,"validation_status":"candidate"}',
+        encoding="utf-8",
+    )
+    with pytest.raises(RuntimeError, match="promoted"):
+        load_validated_model_card(checkpoint)
 
 
 def test_bbox_validation_rejects_invalid_latitude():

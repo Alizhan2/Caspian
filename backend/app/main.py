@@ -144,6 +144,7 @@ async def health() -> dict:
         "model_configured": inference.ready,
         "model_validated": inference.validated,
         "screening_backend": inference.backend,
+        "model_validation_status": inference.validation_status,
         **state,
         "ollama_enabled": settings.ollama_enabled,
         "model_version": inference.model_version,

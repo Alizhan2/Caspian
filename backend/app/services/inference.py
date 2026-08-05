@@ -1,7 +1,30 @@
 import hashlib
+import json
 from pathlib import Path
+from typing import Any
 
 import numpy as np
+
+
+def load_validated_model_card(model_path: str | Path) -> dict[str, Any]:
+    checkpoint = Path(model_path)
+    metadata_path = checkpoint.with_suffix(".json")
+    if not metadata_path.is_file():
+        raise RuntimeError("Segmentation checkpoint is missing its model card")
+    try:
+        payload = json.loads(metadata_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RuntimeError("Segmentation model card is invalid") from exc
+    if payload.get("schema_version") != 1:
+        raise RuntimeError("Unsupported segmentation model card schema")
+    if payload.get("validation_status") != "validated":
+        raise RuntimeError("Segmentation checkpoint has not been promoted to validated")
+    if payload.get("architecture") != "unet-resnet34" or payload.get("input_channels") != ["VV", "VH"]:
+        raise RuntimeError("Segmentation model card is incompatible with the runtime")
+    digest = hashlib.sha256(checkpoint.read_bytes()).hexdigest()
+    if payload.get("checkpoint_sha256") != digest:
+        raise RuntimeError("Segmentation checkpoint SHA-256 does not match its model card")
+    return payload
 
 
 class OilUnetInference:
@@ -16,12 +39,19 @@ class OilUnetInference:
         self.model_path = Path(model_path)
         self.threshold = threshold
         self.experimental_baseline_enabled = experimental_baseline_enabled
+        self.validation_status = "experimental" if experimental_baseline_enabled else "not-configured"
+        self.checkpoint_error: str | None = None
         self.model_version = (
             "adaptive-sar-screening:v1:experimental" if experimental_baseline_enabled else "not-configured"
         )
         self.model = None
         if self.model_path.is_file():
-            self._load_model()
+            try:
+                self._load_model()
+            except RuntimeError as exc:
+                if not self.experimental_baseline_enabled:
+                    raise
+                self.checkpoint_error = str(exc)
 
     @property
     def ready(self) -> bool:
@@ -29,7 +59,7 @@ class OilUnetInference:
 
     @property
     def validated(self) -> bool:
-        return self.model is not None
+        return self.model is not None and self.validation_status == "validated"
 
     @property
     def backend(self) -> str:
@@ -42,13 +72,17 @@ class OilUnetInference:
             import segmentation_models_pytorch as smp
             import torch
 
+            metadata = load_validated_model_card(self.model_path)
             self.model = smp.Unet("resnet34", encoder_weights=None, in_channels=2, classes=1)
             state_dict = torch.load(self.model_path, map_location="cpu", weights_only=True)
             self.model.load_state_dict(state_dict)
             self.model.eval()
             digest = hashlib.sha256(self.model_path.read_bytes()).hexdigest()[:12]
-            self.model_version = f"oil-unet-resnet34:{self.model_path.name}:{digest}"
-        except (ImportError, OSError, RuntimeError) as exc:
+            self.threshold = float(metadata["threshold"])
+            self.validation_status = "validated"
+            self.model_version = f"oil-unet-resnet34:{self.model_path.name}:{digest}:validated"
+        except (ImportError, OSError, KeyError, TypeError, ValueError, RuntimeError) as exc:
+            self.model = None
             raise RuntimeError("Unable to load configured segmentation model") from exc
 
     def predict(

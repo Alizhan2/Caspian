@@ -30,6 +30,8 @@ backend/data/*
 *.pt
 *.pth
 *.onnx
+training/data/*
+!training/data/manifest.example.jsonl
 
 # Local logs and editor files
 *.log
