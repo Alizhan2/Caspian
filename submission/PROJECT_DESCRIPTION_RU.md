@@ -71,4 +71,4 @@ MVP реализует полный демонстрационный конту�
 ## Ссылки
 
 - GitHub: https://github.com/Alizhan2/Caspian
-- Развёрнутый MVP: https://caspian-guardian-live-r4wxrq4vpwq7cxvvq-5173.app.github.dev
+- Развёрнутый MVP: https://caspian-guardian-live-fresh-97wxqr74j4q9fwqq-5173.app.github.dev
