@@ -1,0 +1,20 @@
+Тема: Hackathon – Python team
+
+Здравствуйте!
+
+Направляем решение команды Python team для Caspian Hackathon.
+
+Проект: Caspian Guardian AI
+Кратко: веб-платформа спутникового скрининга потенциальных экологических рисков в Каспийском море. Решение использует реальные Sentinel-1 SAR-сцены, open-source AI/GIS и центр операторской проверки. Результаты маркируются как экспериментальные screening signals и требуют верификации специалистом.
+
+Во вложении:
+1. Caspian_Guardian_AI_Python_Team_10_Slides.pptx;
+2. Caspian_Guardian_AI_Project_Description_RU.pdf.
+
+Ссылки:
+GitHub: https://github.com/Alizhan2/Caspian
+Развёрнутый MVP: https://caspian-guardian-live-fresh-97wxqr74j4q9fwqq-5173.app.github.dev
+
+С уважением,
+Python team
+[ИМЯ И КОНТАКТ]

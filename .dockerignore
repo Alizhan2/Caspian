@@ -1,0 +1,17 @@
+**/__pycache__/
+**/.pytest_cache/
+**/.pytest_tmp/
+**/.ruff_cache/
+**/.venv/
+**/node_modules/
+**/dist/
+.git/
+.env
+.env.*
+!.env.example
+data/
+backend/data/
+models/
+tmp/
+submission/
+DockerDesktopInstaller.exe

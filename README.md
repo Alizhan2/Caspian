@@ -6,16 +6,17 @@ Live-only platform for Sentinel-1 SAR screening of potential oil-like anomalies 
 
 ## What is implemented
 
-- Copernicus Data Space OAuth2 client-credentials authentication with token reuse.
-- Sentinel Hub Catalog search for the newest Sentinel-1 GRD IW scene with VV/VH polarization.
-- Process API download of orthorectified two-band GeoTIFF imagery.
+- Public Earth Search STAC discovery for the newest Sentinel-1 GRD IW scene with VV/VH polarization; no API key is required.
+- Range-based VV/VH crop from public Sentinel-1 Cloud Optimized GeoTIFFs, so the full source products are not downloaded.
+- Optional Copernicus Data Space OAuth2 and Process API fallback with token reuse.
 - Local open-source U-Net/ResNet34 inference through `segmentation-models-pytorch`; no proprietary inference API.
+- Experimental adaptive SAR dark-spot baseline for end-to-end live screening when validated U-Net weights are unavailable.
 - Fail-closed model loading with checkpoint SHA-256 included in every model version.
 - Configurable confidence and min/max area filters.
 - PostGIS persistence for AOIs, subscriptions, scenes, jobs, detections, reports and review history.
 - MinIO storage for original GeoTIFFs, previews and masks.
 - Redis/Celery worker with retries, late acknowledgements and a Celery Beat discovery schedule.
-- Processing states: `DISCOVERED → DOWNLOADING → PROCESSING → AI_ANALYSIS → REVIEW`.
+- Processing states: `DISCOVERED → DOWNLOADING → PROCESSING → AI_ANALYSIS → REVIEW`, or `PUBLISHED` with `no_signal` when a valid run finds no candidate pixels.
 - Operator actions: confirm, mark false positive, or escalate; every action is audited.
 - Optional local Ollama explanation. Ollama writes operator-facing text only and never performs SAR segmentation.
 - Russian and Kazakh responsive web UI, GeoJSON API and RU/KK/EN PDF reports.
@@ -29,17 +30,17 @@ React/Leaflet
       │                 │
     Redis ─ Celery ─ Celery Beat
       │         │
-Copernicus   U-Net/ResNet34
- Catalog + Process API
+Earth Search / Copernicus   U-Net/ResNet34
+   STAC + COG / Process API
       │
     MinIO ─── optional Ollama explanation
 ```
 
 ## Required production inputs
 
-1. Create an OAuth client in the Copernicus Data Space Sentinel Hub dashboard.
-2. Put `CDSE_CLIENT_ID` and `CDSE_CLIENT_SECRET` in a local `.env` copied from `.env.example`.
-3. Place a validated two-channel U-Net checkpoint at `models/oil_unet.pt`.
+1. Copy `.env.example` to `.env`. The default Earth Search catalog is public and needs no API key.
+2. Optionally add `CDSE_CLIENT_ID` and `CDSE_CLIENT_SECRET` for the Copernicus Process API fallback.
+3. For validated ML inference, place a two-channel U-Net checkpoint at `models/oil_unet.pt`. Without it, the explicitly labelled experimental SAR baseline is used.
 4. Change all example database and MinIO passwords before internet deployment.
 5. Install Docker Desktop, then start the stack.
 
@@ -66,6 +67,10 @@ Open:
 - API docs: `http://localhost:8000/docs`
 - MinIO console: `http://localhost:9001`
 
+## Permanent cloud deployment
+
+For a VPS that remains online when the development laptop is off, use the root production image and [`docker-compose.prod.yml`](docker-compose.prod.yml). It serves the React UI and FastAPI API on one public port while keeping Celery worker, scheduler, PostGIS, Redis and MinIO as separate internal services. See [`deploy/VPS_DEPLOYMENT_RU.md`](deploy/VPS_DEPLOYMENT_RU.md) and never commit the generated `.env.production` file.
+
 Enable the optional Ollama service only after the core pipeline works:
 
 ```powershell
@@ -76,17 +81,25 @@ docker compose exec ollama ollama pull qwen2.5:7b-instruct
 
 The model pull is intentionally not automatic because it is large. `OLLAMA_MODEL` can point to another locally installed open-source instruct model.
 
+The default Docker image uses the lightweight NumPy adaptive SAR baseline and does not download PyTorch/CUDA packages. Build the optional CPU U-Net runtime only when validated weights are available:
+
+```powershell
+$env:INSTALL_ML = "true"
+docker compose build backend
+docker compose up -d --force-recreate backend worker scheduler
+```
+
 ## Readiness contract
 
 `GET /api/health` returns the state of:
 
-- `copernicus`
+- `satellite_catalog`
 - `segmentation_model`
 - `postgis`
 - `redis`
 - `object_storage`
 
-`live_ready` becomes true only when all five are ready. Search and analysis endpoints return `503` otherwise. There is no synthetic fallback.
+`satellite_ready` becomes true when the public catalog and infrastructure are available, allowing real scene search and previews. `live_ready` additionally requires the segmentation model before analysis can run. There is no synthetic fallback.
 
 ## AOI monitoring
 
@@ -104,7 +117,9 @@ Example:
 
 ## Model requirements
 
-The runtime expects a `segmentation_models_pytorch.Unet` with a ResNet34 encoder, two input channels (`VV`, `VH`) and one output class. A checkpoint must be trained and evaluated on labelled Caspian SAR data split by both date and region. Record precision, recall, IoU, false alarms per scene and the selected threshold. Until that evaluation is complete, all outputs remain experimental screening signals.
+The validated runtime target is a `segmentation_models_pytorch.Unet` with a ResNet34 encoder, two input channels (`VV`, `VH`) and one output class. A checkpoint must be trained and evaluated on labelled Caspian SAR data split by both date and region. Record precision, recall, IoU, false alarms per scene and the selected threshold. Until that evaluation is complete, the adaptive SAR baseline keeps the live pipeline operational, but all outputs remain experimental screening signals and its scores are not calibrated oil probabilities.
+
+The reproducible training and annotation workflow is documented in [`training/README.md`](training/README.md). `training.prepare_label_pack` collects real georeferenced patches and review-safe GeoJSON templates for Aktau, Kashagan and Atyrau. The bilingual operator UI includes an expert-labeling center that saves only explicit reviewed-positive or reviewed-negative decisions. Training produces a `candidate` model card; a separate promotion command requires metric, scene, region and date coverage gates plus named human approval. At startup, the backend verifies the model-card status, architecture, channels and checkpoint SHA-256 before marking U-Net as validated.
 
 Ollama is not a replacement for U-Net or SegFormer: an LLM cannot provide reliable pixel-wise SAR segmentation. It is restricted to summarising already computed metrics under a prompt that forbids invented wind, AIS, weather or chemical evidence.
 
@@ -114,24 +129,32 @@ Implemented controls include dual-polarization selection, orthorectification, mo
 
 Before operational environmental use, add and validate:
 
-- coastline/water mask;
+- coastline/water mask (implemented when a reviewed land GeoJSON is configured);
 - wind fields at acquisition time;
 - before/after scene comparison;
 - polygon shape features;
-- authorized AIS context;
+- authorized AIS context (implemented through an organization-configured provider endpoint; no AIS is fabricated when absent);
 - organisation accounts and role-based permissions;
 - reviewed-only Telegram/email/webhook delivery;
 - a Caspian-labelled dataset and an independently evaluated checkpoint.
 
 These are not silently simulated by the current build.
 
+### Evidence-source configuration
+
+`COASTLINE_GEOJSON_PATH` must point to a reviewed WGS84 GeoJSON containing **land polygons only**. When configured, candidate pixels that overlap land are removed before vectorization and the result records how many pixels were excluded. `AIS_ENDPOINT` is an authorized provider endpoint that accepts `west`, `south`, `east`, `north`, `start` and `end` query parameters and returns `{ "vessels": [{ "latitude": number, "longitude": number }] }`. `AIS_API_KEY` is sent as a Bearer token. Without either source, the result remains explicitly `unavailable`; it never substitutes synthetic coastline or vessel data.
+
 ## Verification performed in this workspace
 
-- Backend: 9 tests passed.
+- Backend API and geospatial pipeline: 19 tests passed in the production Docker image.
 - SQLAlchemy mapper configuration: passed.
 - Frontend TypeScript and Vite production build: passed.
-- Docker Compose runtime: not executed because Docker is not installed in this Windows environment.
-- Live Copernicus acquisition: not executed because no user OAuth credentials are present.
+- Docker Compose infrastructure: PostGIS, Redis and MinIO healthy.
+- Live satellite discovery: Earth Search returned Sentinel-1D scene `S1D_IW_GRDH_1SDV_20260806T024239_20260806T024304_003999_007444` acquired on 2026-08-06 over Aktau.
+- Live imagery crop: VV/VH source ranges were read into a georeferenced 512 x 512, two-band GeoTIFF without downloading the complete source products.
+- End-to-end live screening: Celery processed the latest real Aktau Sentinel-1 crop through the experimental adaptive SAR baseline and completed with the valid `no_signal` / `PUBLISHED` result instead of treating a clean scene as a system failure.
+- Training smoke test: one complete U-Net epoch produced a candidate state dict, validation/test metrics, selected threshold and non-promoted model card.
+- Real annotation pack: six 512 x 512 VV/VH patches across two acquisition dates per region, GeoTIFFs, previews, historical 10 m wind context, adjacent-date contrast comparison and `unreviewed` GeoJSON templates were generated for Aktau, Kashagan and Atyrau; no synthetic labels were created.
 - Real model inference: not executed because no validated checkpoint is present.
 
-Official integration references: [Copernicus Sentinel Hub authentication](https://documentation.dataspace.copernicus.eu/APIs/SentinelHub/Overview/Authentication.html), [Catalog API examples](https://documentation.dataspace.copernicus.eu/APIs/SentinelHub/Catalog/Examples.html), [Sentinel-1 GRD Process API](https://documentation.dataspace.copernicus.eu/APIs/SentinelHub/Data/S1GRD.html), and [SkyTruth Cerulean Cloud](https://github.com/SkyTruth/cerulean-cloud) as an architectural reference for human-reviewed oil-slick monitoring.
+Official integration references: [Earth Search examples](https://element84.com/earth-search/examples/), [Copernicus Sentinel Hub authentication](https://documentation.dataspace.copernicus.eu/APIs/SentinelHub/Overview/Authentication.html), [Sentinel-1 GRD Process API](https://documentation.dataspace.copernicus.eu/APIs/SentinelHub/Data/S1GRD.html), and [SkyTruth Cerulean Cloud](https://github.com/SkyTruth/cerulean-cloud) as an architectural reference for human-reviewed oil-slick monitoring.

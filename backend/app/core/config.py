@@ -9,14 +9,15 @@ class Settings(BaseSettings):
     cdse_client_id: str = ""
     cdse_client_secret: str = ""
     cdse_base_url: str = "https://sh.dataspace.copernicus.eu"
-    cdse_token_url: str = (
-        "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
-    )
+    earth_search_url: str = "https://earth-search.aws.element84.com/v1"
+    cdse_token_url: str = "https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token"
     database_url: str = "postgresql://guardian:guardian@db:5432/guardian"
     redis_url: str = "redis://redis:6379/0"
     model_path: str = "backend/app/ml/weights/oil_unet.pt"
     storage_path: str = "./data"
+    label_pack_path: str = "training/label-packs/caspian-v1"
     model_threshold: float = 0.58
+    experimental_baseline_enabled: bool = True
     min_detection_area_km2: float = 0.005
     max_detection_area_km2: float = 250.0
     minio_endpoint: str = "minio:9000"
@@ -37,6 +38,10 @@ class Settings(BaseSettings):
     high_confidence_threshold: float = 0.75
     medium_area_km2: float = 0.05
     high_area_km2: float = 0.2
+    coastline_geojson_path: str = ""
+    ais_endpoint: str = ""
+    ais_api_key: str = ""
+    ais_timeout_seconds: int = 12
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

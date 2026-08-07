@@ -1,0 +1,4 @@
+# Keep inference CPU-only in Docker. The matching wheels are installed from
+# download.pytorch.org before the main dependency set is resolved.
+torch==2.5.1
+torchvision==0.20.1

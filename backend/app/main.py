@@ -1,4 +1,5 @@
 import logging
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import gettempdir
@@ -8,6 +9,7 @@ import redis
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.core.config import get_settings
 from app.core.logging import configure_logging, new_request_id, request_id_context
@@ -22,16 +24,21 @@ from app.schemas import (
     DetectionResponse,
     DetectionReviewRequest,
     DetectionReviewResponse,
+    LabelReviewRequest,
+    LabelSampleResponse,
     ReportRequest,
     ReportResponse,
     SceneResponse,
     SceneSearchRequest,
     utc_now,
 )
+from app.services.ais_context import AisContext
+from app.services.coastline import CoastlineMask
 from app.services.copernicus_auth import CopernicusAuth
 from app.services.inference import OilUnetInference
+from app.services.label_pack import LabelPack
 from app.services.object_storage import ObjectStorage
-from app.services.oil_analysis import RealOilAnalysis
+from app.services.oil_analysis import NoScreeningSignal, RealOilAnalysis
 from app.services.ollama_explainer import OllamaExplainer
 from app.services.report_service import build_report_content, create_pdf
 from app.services.risk_calculator import calculate_risk
@@ -44,10 +51,16 @@ configure_logging(settings.log_level)
 logger = logging.getLogger(__name__)
 repo = PostgresRepository(settings.database_url)
 auth = CopernicusAuth(settings.cdse_client_id, settings.cdse_client_secret, settings.cdse_token_url)
-catalog = SceneCatalog(auth, settings.cdse_base_url)
+catalog = SceneCatalog(auth, settings.cdse_base_url, settings.earth_search_url)
 process = SentinelProcess(auth, settings.cdse_base_url, settings.storage_path)
-inference = OilUnetInference(settings.model_path, settings.model_threshold)
-real_analysis = RealOilAnalysis(process, inference)
+inference = OilUnetInference(
+    settings.model_path,
+    settings.model_threshold,
+    settings.experimental_baseline_enabled,
+)
+coastline = CoastlineMask(settings.coastline_geojson_path)
+ais_context = AisContext(settings.ais_endpoint, settings.ais_api_key, settings.ais_timeout_seconds)
+real_analysis = RealOilAnalysis(process, inference, coastline)
 storage = ObjectStorage(
     settings.minio_endpoint,
     settings.minio_access_key,
@@ -56,6 +69,7 @@ storage = ObjectStorage(
     settings.minio_secure,
 )
 explainer = OllamaExplainer(settings.ollama_enabled, settings.ollama_base_url, settings.ollama_model)
+label_pack = LabelPack(settings.label_pack_path)
 
 app = FastAPI(
     title="Caspian Guardian AI API",
@@ -91,13 +105,18 @@ def _redis_ready() -> bool:
 
 def readiness() -> dict:
     components = {
-        "copernicus": auth.configured,
+        "satellite_catalog": catalog.ready,
         "segmentation_model": inference.ready,
         "postgis": repo.ping(),
         "redis": _redis_ready(),
         "object_storage": storage.ready(),
     }
-    return {"live_ready": all(components.values()), "components": components}
+    satellite_ready = components["satellite_catalog"] and components["postgis"]
+    return {
+        "live_ready": all(components.values()),
+        "satellite_ready": satellite_ready,
+        "components": components,
+    }
 
 
 def require_live() -> None:
@@ -107,16 +126,35 @@ def require_live() -> None:
         raise HTTPException(status_code=503, detail={"message": "Live pipeline is not configured", "missing": missing})
 
 
+def require_satellite() -> None:
+    state = readiness()
+    if not state["satellite_ready"]:
+        missing = [name for name in ("satellite_catalog", "postgis") if not state["components"][name]]
+        raise HTTPException(
+            status_code=503,
+            detail={"message": "Satellite catalog is unavailable", "missing": missing},
+        )
+
+
 @app.get("/api/health")
 async def health() -> dict:
     state = readiness()
     return {
-        "status": "ok" if state["live_ready"] else "configuration_required",
+        "status": "ok"
+        if state["live_ready"]
+        else "satellite_ready"
+        if state["satellite_ready"]
+        else "configuration_required",
         "service": "caspian-guardian-api",
         "analysis_mode": settings.analysis_mode,
         "data_mode": "live",
         "credentials_configured": auth.configured,
+        "satellite_connected": state["satellite_ready"],
+        "satellite_provider": catalog.provider,
         "model_configured": inference.ready,
+        "model_validated": inference.validated,
+        "screening_backend": inference.backend,
+        "model_validation_status": inference.validation_status,
         **state,
         "ollama_enabled": settings.ollama_enabled,
         "model_version": inference.model_version,
@@ -137,7 +175,7 @@ async def list_areas():
 
 
 async def search_scene(payload: SceneSearchRequest) -> dict:
-    require_live()
+    require_satellite()
     box = BoundingBox.from_list(payload.bbox)
     if (box.east - box.west) * (box.north - box.south) > settings.max_bbox_area_degrees:
         raise ValueError("requested area is too large for one analysis")
@@ -160,7 +198,7 @@ async def scenes_search(payload: SceneSearchRequest):
 
 @app.get("/api/scenes/latest", response_model=SceneResponse)
 async def latest_scene():
-    require_live()
+    require_satellite()
     scene = repo.latest_scene()
     if not scene:
         raise HTTPException(status_code=404, detail="No live scene has been discovered yet")
@@ -203,8 +241,15 @@ async def run_analysis(job_id: UUID) -> None:
         storage.upload(Path(detection["mask_url"]), mask_key, "image/png")
         detection["image_url"], detection["mask_url"] = _asset_url(image_key), _asset_url(mask_key)
         detection["explanation"] = await explainer.explain(detection)
+        detection.setdefault("evidence_context", {})["ais"] = await ais_context.for_detection(
+            detection["geometry"], job["bbox"], scene["acquisition_time"]
+        )
         risk = calculate_risk(
-            detection["mean_confidence"], detection["max_confidence"], detection["area_km2"], settings
+            detection["mean_confidence"],
+            detection["max_confidence"],
+            detection["area_km2"],
+            settings,
+            model_validated=inference.validated,
         )
         detection.update(
             id=uuid4(),
@@ -222,6 +267,16 @@ async def run_analysis(job_id: UUID) -> None:
             detection_id=saved["id"],
             completed_at=datetime.now(timezone.utc),
         )
+    except NoScreeningSignal:
+        repo.update_job(
+            job_id,
+            status="no_signal",
+            progress=100,
+            stage="PUBLISHED",
+            error_message=None,
+            completed_at=datetime.now(timezone.utc),
+        )
+        logger.info("Screening completed without a candidate signal")
     except Exception as exc:
         logger.exception("Analysis job failed")
         repo.update_job(
@@ -242,6 +297,7 @@ def enqueue(job_id: UUID) -> None:
 
 @app.post("/api/analysis", response_model=AnalysisQueued)
 async def start_analysis(payload: AnalysisRequest):
+    require_live()
     scene = await search_scene(payload)
     job = repo.add_job(scene["id"], payload.analysis_mode.value, payload.bbox, payload.resolution)
     if job["created"]:
@@ -287,6 +343,31 @@ async def review_detection(detection_id: UUID, payload: DetectionReviewRequest):
 @app.get("/api/detections/{detection_id}/reviews", response_model=list[DetectionReviewResponse])
 async def review_history(detection_id: UUID):
     return repo.list_reviews(detection_id)
+
+
+@app.get("/api/labeling/samples", response_model=list[LabelSampleResponse])
+async def label_samples():
+    return label_pack.list_samples()
+
+
+@app.get("/api/labeling/samples/{sample_id}/preview")
+async def label_preview(sample_id: str):
+    try:
+        return FileResponse(label_pack.preview(sample_id), media_type="image/png")
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@app.put("/api/labeling/samples/{sample_id}/review", response_model=LabelSampleResponse)
+async def save_label_review(sample_id: str, payload: LabelReviewRequest):
+    try:
+        return label_pack.review(sample_id, payload)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @app.get("/api/detections.geojson")
@@ -354,6 +435,9 @@ async def download_report(detection_id: UUID):
 
 
 async def monitor_due_areas() -> int:
+    if not readiness()["live_ready"]:
+        logger.info("Skipping scheduled analysis until the full live pipeline is ready")
+        return 0
     processed = 0
     for subscription in repo.due_subscriptions():
         scene = repo.add_scene(await catalog.latest(subscription["bbox"], settings.max_days_back))
@@ -365,3 +449,10 @@ async def monitor_due_areas() -> int:
         repo.mark_subscription_scene(subscription["subscription_id"], scene["external_scene_id"])
         processed += 1
     return processed
+
+
+frontend_dist_value = os.getenv("FRONTEND_DIST")
+if frontend_dist_value:
+    frontend_dist = Path(frontend_dist_value)
+    if frontend_dist.is_dir():
+        app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="frontend")
