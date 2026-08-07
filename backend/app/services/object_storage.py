@@ -14,7 +14,9 @@ class ObjectStorage:
 
     def ready(self) -> bool:
         try:
-            return self.client.bucket_exists(self.bucket)
+            if not self.client.bucket_exists(self.bucket):
+                self.client.make_bucket(self.bucket)
+            return True
         except Exception:
             return False
 
