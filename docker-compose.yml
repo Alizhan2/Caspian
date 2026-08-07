@@ -92,7 +92,7 @@ services:
     command: sh -c "npm install --prefer-offline --no-audit --no-fund && npm run dev -- --host 0.0.0.0"
     environment:
       VITE_API_URL: http://localhost:8000/api
-    ports: ["127.0.0.1:5173:5173"]
+    ports: ["${FRONTEND_BIND_HOST:-127.0.0.1}:5173:5173"]
     volumes:
       - ./frontend:/workspace/frontend
       - guardian_frontend_node_modules:/workspace/frontend/node_modules
