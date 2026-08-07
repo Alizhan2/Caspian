@@ -36,7 +36,10 @@ training/label-packs/*
 
 # Local logs and editor files
 *.log
+*.inspect.ndjson
 celerybeat-schedule*
+DockerDesktopInstaller.exe
+tmp/
 .idea/
 .vscode/
 Thumbs.db

@@ -36,7 +36,7 @@ from app.services.copernicus_auth import CopernicusAuth
 from app.services.inference import OilUnetInference
 from app.services.label_pack import LabelPack
 from app.services.object_storage import ObjectStorage
-from app.services.oil_analysis import RealOilAnalysis
+from app.services.oil_analysis import NoScreeningSignal, RealOilAnalysis
 from app.services.ollama_explainer import OllamaExplainer
 from app.services.report_service import build_report_content, create_pdf
 from app.services.risk_calculator import calculate_risk
@@ -265,6 +265,16 @@ async def run_analysis(job_id: UUID) -> None:
             detection_id=saved["id"],
             completed_at=datetime.now(timezone.utc),
         )
+    except NoScreeningSignal:
+        repo.update_job(
+            job_id,
+            status="no_signal",
+            progress=100,
+            stage="PUBLISHED",
+            error_message=None,
+            completed_at=datetime.now(timezone.utc),
+        )
+        logger.info("Screening completed without a candidate signal")
     except Exception as exc:
         logger.exception("Analysis job failed")
         repo.update_job(

@@ -92,9 +92,9 @@ class OilUnetInference:
     ) -> tuple[np.ndarray, np.ndarray]:
         if not self.ready:
             raise RuntimeError("A validated SAR segmentation checkpoint is not configured")
-        import torch
-
         if self.model is not None:
+            import torch
+
             with torch.no_grad():
                 logits = self.model(torch.from_numpy(image[None]).float())
                 probability = torch.sigmoid(logits)[0, 0].cpu().numpy()
@@ -111,20 +111,28 @@ class OilUnetInference:
         """Estimate dark-spot probability for experimental screening only."""
         if image.ndim != 3 or image.shape[0] != 2:
             raise ValueError("Expected a normalized [2, H, W] VV/VH tensor")
-        import torch
-        import torch.nn.functional as functional
+        vv = image[0].astype("float32", copy=False)
+        vh = image[1].astype("float32", copy=False)
+        local_mean = OilUnetInference._box_mean(vv, 51)
+        local_squared = OilUnetInference._box_mean(vv * vv, 51)
+        local_std = np.sqrt(np.maximum(local_squared - local_mean * local_mean, 1e-4))
+        local_contrast = (local_mean - vv) / (local_std + 0.04)
+        contrast_score = 1.0 / (1.0 + np.exp(-np.clip((local_contrast - 1.15) * 2.4, -30, 30)))
+        absolute_darkness = np.clip((0.58 - vv) / 0.38, 0, 1)
+        dual_pol_darkness = np.clip((0.52 - vh) / 0.4, 0, 1)
+        probability = contrast_score * (0.5 + 0.3 * absolute_darkness + 0.2 * dual_pol_darkness)
+        return OilUnetInference._box_mean(probability, 7).astype("float32")
 
-        tensor = torch.from_numpy(image[None]).float()
-        vv = tensor[:, :1]
-        vh = tensor[:, 1:2]
-        with torch.no_grad():
-            local_mean = functional.avg_pool2d(vv, 51, stride=1, padding=25)
-            local_squared = functional.avg_pool2d(vv.square(), 51, stride=1, padding=25)
-            local_std = torch.sqrt(torch.clamp(local_squared - local_mean.square(), min=1e-4))
-            local_contrast = (local_mean - vv) / (local_std + 0.04)
-            contrast_score = torch.sigmoid((local_contrast - 1.15) * 2.4)
-            absolute_darkness = torch.clamp((0.58 - vv) / 0.38, 0, 1)
-            dual_pol_darkness = torch.clamp((0.52 - vh) / 0.4, 0, 1)
-            probability = contrast_score * (0.5 + 0.3 * absolute_darkness + 0.2 * dual_pol_darkness)
-            probability = functional.avg_pool2d(probability, 7, stride=1, padding=3)
-        return probability[0, 0].numpy()
+    @staticmethod
+    def _box_mean(array: np.ndarray, kernel_size: int) -> np.ndarray:
+        """Compute a same-sized reflected box mean without an ML runtime."""
+        radius = kernel_size // 2
+        padded = np.pad(array, ((radius, radius), (radius, radius)), mode="reflect")
+        integral = np.pad(padded, ((1, 0), (1, 0)), mode="constant").cumsum(0).cumsum(1)
+        totals = (
+            integral[kernel_size:, kernel_size:]
+            - integral[:-kernel_size, kernel_size:]
+            - integral[kernel_size:, :-kernel_size]
+            + integral[:-kernel_size, :-kernel_size]
+        )
+        return totals / float(kernel_size * kernel_size)

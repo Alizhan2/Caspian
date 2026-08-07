@@ -16,7 +16,7 @@ Live-only platform for Sentinel-1 SAR screening of potential oil-like anomalies 
 - PostGIS persistence for AOIs, subscriptions, scenes, jobs, detections, reports and review history.
 - MinIO storage for original GeoTIFFs, previews and masks.
 - Redis/Celery worker with retries, late acknowledgements and a Celery Beat discovery schedule.
-- Processing states: `DISCOVERED → DOWNLOADING → PROCESSING → AI_ANALYSIS → REVIEW`.
+- Processing states: `DISCOVERED → DOWNLOADING → PROCESSING → AI_ANALYSIS → REVIEW`, or `PUBLISHED` with `no_signal` when a valid run finds no candidate pixels.
 - Operator actions: confirm, mark false positive, or escalate; every action is audited.
 - Optional local Ollama explanation. Ollama writes operator-facing text only and never performs SAR segmentation.
 - Russian and Kazakh responsive web UI, GeoJSON API and RU/KK/EN PDF reports.
@@ -77,6 +77,14 @@ docker compose exec ollama ollama pull qwen2.5:7b-instruct
 
 The model pull is intentionally not automatic because it is large. `OLLAMA_MODEL` can point to another locally installed open-source instruct model.
 
+The default Docker image uses the lightweight NumPy adaptive SAR baseline and does not download PyTorch/CUDA packages. Build the optional CPU U-Net runtime only when validated weights are available:
+
+```powershell
+$env:INSTALL_ML = "true"
+docker compose build backend
+docker compose up -d --force-recreate backend worker scheduler
+```
+
 ## Readiness contract
 
 `GET /api/health` returns the state of:
@@ -134,13 +142,13 @@ These are not silently simulated by the current build.
 
 ## Verification performed in this workspace
 
-- Backend, annotation and training pipeline: 26 tests passed, including reviewer-name, multi-date selection, wind-context and temporal-comparison validation.
+- Backend API and geospatial pipeline: 19 tests passed in the production Docker image.
 - SQLAlchemy mapper configuration: passed.
 - Frontend TypeScript and Vite production build: passed.
 - Docker Compose infrastructure: PostGIS, Redis and MinIO healthy.
-- Live satellite discovery: Earth Search returned Sentinel-1D scene `S1D_IW_GRDH_1SDV_20260802T142102_20260802T142127_003948_00727D` acquired on 2026-08-02.
+- Live satellite discovery: Earth Search returned Sentinel-1D scene `S1D_IW_GRDH_1SDV_20260806T024239_20260806T024304_003999_007444` acquired on 2026-08-06 over Aktau.
 - Live imagery crop: VV/VH source ranges were read into a georeferenced 512 x 512, two-band GeoTIFF without downloading the complete source products.
-- End-to-end live screening: Celery processed a real Sentinel-1 crop through the experimental adaptive SAR baseline, stored seven candidate polygons in PostGIS and uploaded the raster, preview and mask to MinIO.
+- End-to-end live screening: Celery processed the latest real Aktau Sentinel-1 crop through the experimental adaptive SAR baseline and completed with the valid `no_signal` / `PUBLISHED` result instead of treating a clean scene as a system failure.
 - Training smoke test: one complete U-Net epoch produced a candidate state dict, validation/test metrics, selected threshold and non-promoted model card.
 - Real annotation pack: six 512 x 512 VV/VH patches across two acquisition dates per region, GeoTIFFs, previews, historical 10 m wind context, adjacent-date contrast comparison and `unreviewed` GeoJSON templates were generated for Aktau, Kashagan and Atyrau; no synthetic labels were created.
 - Real model inference: not executed because no validated checkpoint is present.

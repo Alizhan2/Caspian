@@ -40,7 +40,10 @@ services:
 
   backend: &backend
     image: caspian-guardian-backend:local
-    build: ./backend
+    build:
+      context: ./backend
+      args:
+        INSTALL_ML: ${INSTALL_ML:-false}
     environment: &backend-environment
       DATABASE_URL: postgresql://guardian:${POSTGRES_PASSWORD:-guardian-local-only}@db:5432/guardian
       REDIS_URL: redis://redis:6379/0
@@ -86,11 +89,13 @@ services:
   frontend:
     image: node:20-alpine
     working_dir: /workspace/frontend
-    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    command: sh -c "npm install --prefer-offline --no-audit --no-fund && npm run dev -- --host 0.0.0.0"
     environment:
       VITE_API_URL: http://localhost:8000/api
     ports: ["127.0.0.1:5173:5173"]
-    volumes: ["./frontend:/workspace/frontend"]
+    volumes:
+      - ./frontend:/workspace/frontend
+      - guardian_frontend_node_modules:/workspace/frontend/node_modules
     depends_on: [backend]
 
 volumes:
@@ -98,3 +103,4 @@ volumes:
   guardian_redis:
   guardian_objects:
   guardian_ollama:
+  guardian_frontend_node_modules:

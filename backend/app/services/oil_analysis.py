@@ -11,6 +11,10 @@ from app.services.sentinel_process import SentinelProcess
 from app.services.vectorizer import polygon_area_km2, raster_mask_to_geojson
 
 
+class NoScreeningSignal(LookupError):
+    """A valid screening run completed without candidate anomaly pixels."""
+
+
 class RealOilAnalysis:
     """Run the real Sentinel-1 VV/VH to mask-to-polygon pipeline."""
 
@@ -48,7 +52,7 @@ class RealOilAnalysis:
         Image.fromarray((binary.astype("uint8") * 255), mode="L").save(mask_path)
         features = geometry["features"]
         if not features:
-            raise LookupError("No candidate anomaly pixels passed the model threshold")
+            raise NoScreeningSignal("No candidate anomaly pixels passed the model threshold")
         areas = [polygon_area_km2(feature["geometry"]) for feature in features]
         confidence_values = probability[binary]
         first_ring = features[0]["geometry"]["coordinates"][0][0]
