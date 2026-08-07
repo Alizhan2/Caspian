@@ -13,7 +13,7 @@
 
 Ссылки:
 GitHub: https://github.com/Alizhan2/Caspian
-Развёрнутый MVP: [ВСТАВЬТЕ ПУБЛИЧНУЮ ССЫЛКУ]
+Развёрнутый MVP: https://caspian-guardian-live-r4wxrq4vpwq7cxvvq-5173.app.github.dev
 
 С уважением,
 [НАЗВАНИЕ КОМАНДЫ]

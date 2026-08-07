@@ -29,6 +29,8 @@ React, TypeScript, Leaflet, FastAPI, Celery, Redis, PostGIS, MinIO, Sentinel-1, 
 
 GitHub: https://github.com/Alizhan2/Caspian
 
+Демо MVP: https://caspian-guardian-live-r4wxrq4vpwq7cxvvq-5173.app.github.dev
+
 Полная инструкция запуска находится в корневом README репозитория. Минимальный запуск выполняется через Docker Desktop:
 
 ```powershell
