@@ -1,4 +1,5 @@
 import logging
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import gettempdir
@@ -8,6 +9,7 @@ import redis
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.core.config import get_settings
 from app.core.logging import configure_logging, new_request_id, request_id_context
@@ -447,3 +449,10 @@ async def monitor_due_areas() -> int:
         repo.mark_subscription_scene(subscription["subscription_id"], scene["external_scene_id"])
         processed += 1
     return processed
+
+
+frontend_dist_value = os.getenv("FRONTEND_DIST")
+if frontend_dist_value:
+    frontend_dist = Path(frontend_dist_value)
+    if frontend_dist.is_dir():
+        app.mount("/", StaticFiles(directory=frontend_dist, html=True), name="frontend")

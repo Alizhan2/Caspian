@@ -1,0 +1,72 @@
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: guardian
+      POSTGRES_USER: guardian
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.production}
+    volumes: [guardian_db:/var/lib/postgresql/data]
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    volumes: [guardian_redis:/data]
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:?set MINIO_ACCESS_KEY in .env.production}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:?set MINIO_SECRET_KEY in .env.production}
+    volumes: [guardian_objects:/data]
+
+  web: &guardian
+    build: .
+    restart: unless-stopped
+    environment: &guardian_environment
+      PORT: 8080
+      DATABASE_URL: postgresql://guardian:${POSTGRES_PASSWORD}@db:5432/guardian
+      REDIS_URL: redis://redis:6379/0
+      EARTH_SEARCH_URL: ${EARTH_SEARCH_URL:-https://earth-search.aws.element84.com/v1}
+      CDSE_CLIENT_ID: ${CDSE_CLIENT_ID:-}
+      CDSE_CLIENT_SECRET: ${CDSE_CLIENT_SECRET:-}
+      MODEL_PATH: /workspace/models/oil_unet.pt
+      EXPERIMENTAL_BASELINE_ENABLED: ${EXPERIMENTAL_BASELINE_ENABLED:-true}
+      MODEL_THRESHOLD: ${MODEL_THRESHOLD:-0.58}
+      STORAGE_PATH: /workspace/data
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
+      MINIO_BUCKET: ${MINIO_BUCKET:-guardian-scenes}
+      MINIO_SECURE: "false"
+      OLLAMA_ENABLED: "false"
+      COASTLINE_GEOJSON_PATH: ${COASTLINE_GEOJSON_PATH:-}
+      AIS_ENDPOINT: ${AIS_ENDPOINT:-}
+      AIS_API_KEY: ${AIS_API_KEY:-}
+    ports: ["80:8080"]
+    volumes:
+      - guardian_reports:/workspace/data
+      - ./models:/workspace/models:ro
+    depends_on: [db, redis, minio]
+
+  worker:
+    <<: *guardian
+    environment:
+      <<: *guardian_environment
+      SERVICE_ROLE: worker
+    ports: []
+
+  scheduler:
+    <<: *guardian
+    environment:
+      <<: *guardian_environment
+      SERVICE_ROLE: scheduler
+    ports: []
+
+volumes:
+  guardian_db:
+  guardian_redis:
+  guardian_objects:
+  guardian_reports:

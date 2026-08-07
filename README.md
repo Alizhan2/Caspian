@@ -67,6 +67,10 @@ Open:
 - API docs: `http://localhost:8000/docs`
 - MinIO console: `http://localhost:9001`
 
+## Permanent cloud deployment
+
+For a VPS that remains online when the development laptop is off, use the root production image and [`docker-compose.prod.yml`](docker-compose.prod.yml). It serves the React UI and FastAPI API on one public port while keeping Celery worker, scheduler, PostGIS, Redis and MinIO as separate internal services. See [`deploy/VPS_DEPLOYMENT_RU.md`](deploy/VPS_DEPLOYMENT_RU.md) and never commit the generated `.env.production` file.
+
 Enable the optional Ollama service only after the core pipeline works:
 
 ```powershell
